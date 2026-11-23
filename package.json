@@ -1,0 +1,21 @@
+{
+  "name": "premier-league-analytics",
+  "version": "1.0.0",
+  "description": "Ultra-fast broadcast Premier League analytics portal and Tactical 11 simulator (<300 KB)",
+  "main": "serve.py",
+  "scripts": {
+    "audit:size": "node scripts/audit_size.js",
+    "validate:data": "python scripts/validate_data.py",
+    "build": "node scripts/build.js",
+    "serve": "python serve.py",
+    "start": "python serve.py"
+  },
+  "keywords": [
+    "premier-league",
+    "football-analytics",
+    "tactical-simulator",
+    "radash"
+  ],
+  "author": "",
+  "license": "MIT"
+}

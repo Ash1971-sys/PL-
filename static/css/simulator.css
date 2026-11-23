@@ -1,0 +1,169 @@
+/* ==========================================================================
+   PREMIER LEAGUE TACTICAL 11 // CHECKER-PIECE SIMULATOR STYLES
+   Official PL Palette: #37003c / #00ff85 / #ff2882 / #05f0ff / #1c5e26
+   Strict Brutalist 0px Geometry across panels & 3D Circular Discs for players
+   ========================================================================== */
+
+/* Strict 0px Sharp Rectangular Geometry Enforced across UI elements */
+*, *::before, *::after {
+  border-radius: 0px !important;
+  box-sizing: border-box;
+}
+
+/* Exempt circular top-down checker tokens, ball, and circular player badges */
+.checker-token,
+.checker-token *,
+.ball-token,
+.ball-pulse,
+#pieces-layer circle,
+.rounded-full,
+#active-token-badge {
+  border-radius: 50% !important;
+}
+
+/* Pitch mowing stripes (high-contrast Premier League turf) */
+.pitch-stripes {
+  background: repeating-linear-gradient(
+    90deg,
+    #1d6b2c 0px,
+    #1d6b2c 54px,
+    #247d35 54px,
+    #247d35 108px
+  );
+}
+
+/* Custom Premier League Purple Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #250029;
+}
+::-webkit-scrollbar-thumb {
+  background: #4e0856;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #00ff85;
+}
+
+/* 3D Circular Checker Token with top-down bevel effect */
+.checker-token {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  transform: translate(-50%, -50%);
+  border-radius: 50% !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5), inset 0 2px 2px rgba(255, 255, 255, 0.4), inset 0 -2px 3px rgba(0, 0, 0, 0.6);
+  transition: transform 0.15s ease, filter 0.15s ease;
+  cursor: grab;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 25;
+  touch-action: none;
+}
+
+.checker-token:active {
+  cursor: grabbing;
+}
+
+.checker-token:hover {
+  transform: translate(-50%, -50%) scale(1.15);
+  z-index: 40;
+}
+
+/* User 11 checker disc styling */
+.checker-user {
+  background: radial-gradient(circle at 35% 35%, #4a0052, #210025);
+  border: 2.5px solid #00ff85;
+  color: #00ff85;
+}
+
+/* AI Opponent checker disc styling */
+.checker-ai {
+  background: radial-gradient(circle at 35% 35%, #4a0052, #210025);
+  border: 2.5px solid #ff2882;
+  color: #ff2882;
+}
+
+/* Active Selection cyan pulsing ring */
+.selected-ring {
+  box-shadow: 0 0 0 3px #05f0ff, 0 0 16px rgba(5, 240, 255, 0.9), inset 0 0 6px #05f0ff;
+  animation: pulse-ring 1.8s infinite alternate;
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 2px #05f0ff, 0 0 10px rgba(5, 240, 255, 0.7);
+  }
+  100% {
+    box-shadow: 0 0 0 4px #05f0ff, 0 0 22px rgba(5, 240, 255, 1);
+  }
+}
+
+/* Match Ball 3D disc & glow */
+.ball-token {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  transform: translate(-50%, -50%);
+  border-radius: 50% !important;
+  background: radial-gradient(circle at 35% 35%, #ffffff, #dcdcdc);
+  border: 2px solid #111111;
+  z-index: 35;
+  pointer-events: none;
+  transition: left 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94), top 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  box-shadow: 0 0 0 2px #ffffff, 0 0 10px rgba(255, 255, 255, 0.9);
+}
+
+.ball-pulse {
+  animation: ball-glint 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes ball-glint {
+  0% {
+    filter: drop-shadow(0 0 2px #00ff85);
+  }
+  100% {
+    filter: drop-shadow(0 0 8px #05f0ff);
+  }
+}
+
+/* Vector Trajectory animated dash */
+.vector-dash {
+  stroke-dasharray: 6, 4;
+  animation: dash 1s linear infinite;
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+/* Tactical Pitch Container Cursor */
+#pitch-container {
+  touch-action: none;
+}
+
+
+/* Keyboard Focus States for Simulator Controls */
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+a:focus-visible,
+.checker-token:focus-visible {
+  outline: 2px solid #00ff85 !important;
+  outline-offset: 2px;
+}
+
+/* GPU Accelerated transforms for tokens and vector lines */
+.checker-token,
+.ball-token {
+  will-change: left, top, transform;
+  transform: translate3d(-50%, -50%, 0);
+  backface-visibility: hidden;
+}

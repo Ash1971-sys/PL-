@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Premier League Tactical 11 // Interactive 2D Top-Down Checker-Piece Match Simulator with Real Player Data and Two-Way Autonomous AI Engine.">
+  <meta name="theme-color" content="#37003c">
+  <title>PL Tactical Board - YOU 11 Simulator // Premier League Analytics</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Google Fonts: Chivo, JetBrains Mono, Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chivo:ital,wght@0,700;0,900;1,900&family=JetBrains+Mono:wght@500;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            pl: {
+              purple: '#37003c',
+              dark: '#220026',
+              green: '#00ff85',
+              magenta: '#ff2882',
+              cyan: '#05f0ff',
+              grey: '#f4f4f6',
+              white: '#ffffff',
+              border: '#4a0b52',
+              fielddark: '#1c5e26',
+              fieldlight: '#237330',
+              fieldline: 'rgba(255, 255, 255, 0.85)'
+            },
+            "pl-purple": "#37003c",
+            "pl-green": "#00ff85",
+            "pl-magenta": "#ff2882",
+            "pl-cyan": "#05f0ff",
+            "pl-border": "#4a0b52",
+            "pl-fielddark": "#1c5e26"
+          },
+          fontFamily: {
+            display: ['Chivo', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+            sans: ['Plus Jakarta Sans', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Modular Stylesheet for Simulator -->
+  <link rel="stylesheet" href="../static/css/simulator.css">
+</head>
+<body class="bg-[#140016] text-white font-sans antialiased h-screen flex flex-col overflow-hidden select-none">
+
+  <!-- Skip to Main Content Link for Keyboard Accessibility -->
+  <a href="#main-workspace" class="sr-only focus:not-sr-only px-3 py-1.5 bg-pl-green text-pl-purple font-mono font-bold absolute top-2 left-2 z-[100] border border-white">
+    Skip to match simulator
+  </a>
+
+  <!-- TOP BROADCAST HEADER (Premier League #37003c) -->
+  <header role="banner" class="w-full bg-pl-purple border-b-2 border-pl-green z-50 flex-none shadow-xl">
+    <div class="px-4 py-2 flex items-center justify-between gap-3 flex-wrap">
+      
+      <!-- Brand & Competition Wordmark + Navigation Links -->
+      <div class="flex items-center gap-3">
+        <a href="/" class="bg-pl-green text-pl-purple font-display font-black text-xl px-2.5 py-1 tracking-tighter uppercase flex items-center gap-1.5 border border-white hover:bg-white transition-colors" aria-label="Premier League Tactical 11 Home">
+          <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 2L15 8L22 9L17 14L18 21L12 17.5L6 21L7 14L2 9L9 8L12 2Z"/>
+          </svg>
+          TACTICAL 11
+        </a>
+        <div class="hidden xl:flex flex-col">
+          <span class="text-[10px] font-mono tracking-widest text-pl-cyan font-bold uppercase">MATCH ENGINE v4.2 // 2D TOP-DOWN</span>
+          <span class="text-xs font-display font-black text-white tracking-wider uppercase">PREMIER LEAGUE SIMULATOR</span>
+        </div>
+
+        <!-- Global Portal Navigation Links -->
+        <nav aria-label="Portal Navigation" class="hidden md:flex items-center gap-1 ml-2 border-l border-white/20 pl-3">
+          <a href="/" class="px-2.5 py-1 text-[11px] font-mono font-bold tracking-wider text-white/70 hover:text-pl-green hover:bg-[#25002b] border border-transparent hover:border-white/20 uppercase transition-all">
+            ARCHIVE 2021-2026
+          </a>
+          <a href="/players" class="px-2.5 py-1 text-[11px] font-mono font-bold tracking-wider text-white/70 hover:text-pl-green hover:bg-[#25002b] border border-transparent hover:border-white/20 uppercase transition-all">
+            PLAYERS 2025/26
+          </a>
+          <a href="/simulator" aria-current="page" class="px-2.5 py-1 text-[11px] font-mono font-bold tracking-wider text-pl-green bg-[#25002b] border border-pl-green uppercase">
+            SIMULATOR XI
+          </a>
+        </nav>
+      </div>
+
+      <!-- Live Match Score Board -->
+      <div class="flex items-center bg-[#25002b] border border-pl-border px-3.5 py-1.5 gap-4 shadow-inner" role="region" aria-label="Live Match Scoreboard">
+        <!-- Home Team (YOU 11) -->
+        <div class="flex items-center gap-2">
+          <span class="w-3.5 h-3.5 bg-pl-green border border-white inline-block" aria-hidden="true"></span>
+          <span id="scoreboard-user-name" class="font-display font-black tracking-wider text-sm text-pl-green uppercase">YOU 11</span>
+        </div>
+
+        <!-- Score & Clock -->
+        <div class="flex items-center gap-2.5 px-3 py-0.5 bg-[#17001b] border border-black/40">
+          <span id="score-user" class="font-mono font-extrabold text-xl text-pl-green tabular-nums" aria-label="User team score">0</span>
+          <span class="font-mono font-bold text-xs text-white/40">:</span>
+          <span id="score-ai" class="font-mono font-extrabold text-xl text-pl-magenta tabular-nums" aria-label="AI team score">0</span>
+          
+          <div class="h-4 w-[1px] bg-white/20 mx-1" aria-hidden="true"></div>
+          
+          <div class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-none bg-pl-magenta animate-ping" aria-hidden="true"></span>
+            <span id="match-clock" class="font-mono font-bold text-xs text-pl-cyan tracking-wider" aria-label="Match elapsed time">00:00</span>
+            <span id="half-badge" class="text-[9px] font-mono text-white/70 bg-pl-purple px-1 py-0.2 border border-white/20">1ST H</span>
+          </div>
+        </div>
+
+        <!-- Away Team (AI Club) -->
+        <div class="flex items-center gap-2">
+          <span id="scoreboard-ai-name" class="font-display font-black tracking-wider text-sm text-pl-magenta uppercase">ARSENAL (AI)</span>
+          <span class="w-3.5 h-3.5 bg-pl-magenta border border-white inline-block" aria-hidden="true"></span>
+        </div>
+      </div>
+
+      <!-- Formation Dropdown & Sim Controls -->
+      <div class="flex items-center gap-2 flex-wrap" role="toolbar" aria-label="Simulation Controls">
+        <!-- Formation Selector -->
+        <div class="flex items-center bg-[#28002e] border border-pl-border px-2 py-1 gap-1.5">
+          <label for="formation-select" class="text-[10px] font-mono text-white/60 font-bold uppercase">SHAPE:</label>
+          <select id="formation-select" onchange="changeFormation(this.value)" aria-label="Choose team formation" class="bg-[#18001c] text-pl-green text-xs font-mono font-bold py-1 px-2 border border-white/20 outline-none focus:border-pl-cyan cursor-pointer">
+            <option value="4-3-3">4-3-3 ATTACK</option>
+            <option value="4-2-3-1">4-2-3-1 CONTROL</option>
+            <option value="3-5-2">3-5-2 WIDE</option>
+            <option value="4-4-2">4-4-2 FLAT</option>
+          </select>
+        </div>
+
+        <!-- Controls (Start, Step, Speed, Reset) -->
+        <div class="flex items-center gap-1">
+          <button id="sim-toggle-btn" onclick="toggleSimulation()" aria-label="Start match simulation" class="bg-pl-green hover:bg-[#1cfda0] text-pl-purple font-display font-black text-xs px-3 py-1.5 uppercase tracking-wider flex items-center gap-1.5 border border-white shadow transition-colors">
+            <svg id="sim-play-icon" class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <span id="sim-btn-text">START</span>
+          </button>
+          
+          <button onclick="stepSimulation()" aria-label="Step simulation forward one tick" class="bg-[#3e0847] hover:bg-[#520d5d] text-white border border-white/20 hover:border-pl-cyan font-mono font-bold text-xs px-2.5 py-1.5 uppercase tracking-tight flex items-center gap-1" title="Single Tick Step">
+            <span>STEP +1</span>
+          </button>
+
+          <button id="speed-btn" onclick="toggleSpeed()" aria-label="Simulation speed 1X" class="bg-[#3e0847] hover:bg-[#520d5d] text-pl-cyan border border-white/20 hover:border-pl-cyan font-mono font-bold text-xs px-2.5 py-1.5 tracking-tight">
+            1X
+          </button>
+
+          <button onclick="resetMatch()" aria-label="Reset match to kickoff" class="bg-[#240029] hover:bg-[#380140] text-white/70 hover:text-white border border-white/20 font-mono text-xs px-2.5 py-1.5 uppercase tracking-tight">
+            RESET
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE: 3-COLUMN PANELS -->
+  <main id="main-workspace" class="flex-1 grid grid-cols-1 lg:grid-cols-[330px_1fr_340px] overflow-hidden" role="main">
+
+    <!-- LEFT PANEL: "YOU 11" CUSTOM BUILDER & TEAM PICKER -->
+    <aside class="bg-[#210025] border-r border-pl-border flex flex-col h-full overflow-hidden z-20" aria-label="Squad Configuration">
+      
+      <!-- Sharp Mode Tabs -->
+      <div class="grid grid-cols-2 bg-[#17001b] border-b border-pl-border" role="tablist" aria-label="Squad Builder Mode">
+        <button id="tab-custom-btn" role="tab" aria-selected="true" aria-controls="tab-custom-content" onclick="switchLeftTab('custom')" class="py-2.5 text-xs font-display font-black uppercase tracking-wider border-b-2 border-pl-green bg-[#29002e] text-pl-green flex items-center justify-center gap-1.5">
+          <span>CUSTOM "YOU 11"</span>
+        </button>
+        <button id="tab-club-btn" role="tab" aria-selected="false" aria-controls="tab-club-content" onclick="switchLeftTab('club')" class="py-2.5 text-xs font-display font-black uppercase tracking-wider border-b-2 border-transparent text-white/50 hover:text-white bg-[#19001d] flex items-center justify-center gap-1.5">
+          <span>PICK CLUB</span>
+        </button>
+      </div>
+
+      <!-- TAB 1: CUSTOM YOU 11 BUILDER -->
+      <div id="tab-custom-content" role="tabpanel" class="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
+        
+        <!-- Preset Formation Quick Buttons -->
+        <div class="bg-[#2b0031] p-2.5 border border-pl-border">
+          <div class="flex justify-between items-center mb-1.5">
+            <span class="text-[10px] font-mono uppercase tracking-wider text-pl-cyan font-bold">TACTICAL PRESET</span>
+            <span class="text-[9px] font-mono text-white/40">HOTKEYS [1-4]</span>
+          </div>
+          <div class="grid grid-cols-4 gap-1">
+            <button onclick="changeFormation('4-3-3')" aria-label="Switch formation to 4-3-3" class="bg-[#1a001e] hover:bg-pl-green hover:text-pl-purple text-white border border-white/20 text-[10px] font-mono font-bold py-1 transition-colors">4-3-3</button>
+            <button onclick="changeFormation('4-2-3-1')" aria-label="Switch formation to 4-2-3-1" class="bg-[#1a001e] hover:bg-pl-green hover:text-pl-purple text-white border border-white/20 text-[10px] font-mono font-bold py-1 transition-colors">4-2-3-1</button>
+            <button onclick="changeFormation('3-5-2')" aria-label="Switch formation to 3-5-2" class="bg-[#1a001e] hover:bg-pl-green hover:text-pl-purple text-white border border-white/20 text-[10px] font-mono font-bold py-1 transition-colors">3-5-2</button>
+            <button onclick="changeFormation('4-4-2')" aria-label="Switch formation to 4-4-2" class="bg-[#1a001e] hover:bg-pl-green hover:text-pl-purple text-white border border-white/20 text-[10px] font-mono font-bold py-1 transition-colors">4-4-2</button>
+          </div>
+        </div>
+
+        <!-- Team Name & Kit Accent -->
+        <div class="bg-[#2b0031] p-2.5 border border-pl-border flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <label for="custom-team-input" class="text-[10px] font-mono text-white/70 uppercase font-bold">TEAM BRANDING</label>
+            <span class="text-[9px] font-mono text-pl-green">DISC RIM: #00FF85</span>
+          </div>
+          <div class="flex gap-2">
+            <input type="text" id="custom-team-input" value="YOU 11" oninput="updateTeamName(this.value)" aria-label="Custom team name" class="flex-1 bg-[#160018] border border-white/20 px-2 py-1 text-xs font-display font-black text-white focus:border-pl-green outline-none uppercase tracking-wide">
+            <button onclick="randomizeSquadNames()" aria-label="Generate random superstar lineup" class="bg-[#3e0847] hover:bg-[#580b65] text-pl-cyan border border-white/20 text-[10px] font-mono px-2 py-1 uppercase font-bold" title="Generate random superstar lineup">
+              RANDOM
+            </button>
+          </div>
+        </div>
+
+        <!-- 11 Players Roster Table -->
+        <div class="bg-[#27002c] border border-pl-border flex-1 flex flex-col">
+          <div class="p-2 bg-[#1f0023] border-b border-pl-border flex items-center justify-between">
+            <span class="text-[11px] font-display font-black text-pl-white uppercase tracking-wider">STARTING XI CHECKERS</span>
+            <span class="text-[9px] font-mono text-pl-cyan font-bold">CLICK OR DRAG ON PITCH</span>
+          </div>
+
+          <!-- Roster List -->
+          <div id="roster-list" role="listbox" aria-label="Starting eleven player checkers" class="divide-y divide-pl-border/50 text-xs overflow-y-auto max-h-[380px]">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+
+        <!-- Mini Legend -->
+        <div class="p-2 bg-[#1a001e] border border-pl-border text-[10px] font-mono text-white/60 flex items-center justify-between">
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full border border-pl-green bg-pl-purple inline-block" aria-hidden="true"></span> YOUR DISC</span>
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full border border-pl-cyan bg-pl-cyan inline-block" aria-hidden="true"></span> ACTIVE</span>
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full border border-pl-magenta bg-pl-purple inline-block" aria-hidden="true"></span> AI DISC</span>
+        </div>
+
+      </div>
+
+      <!-- TAB 2: PICK CLUB (Premier League Official Roster Presets) -->
+      <div id="tab-club-content" role="tabpanel" class="hidden flex-1 overflow-y-auto p-3 flex flex-col gap-3">
+        <div class="flex items-center justify-between">
+          <div class="text-[10px] font-mono text-white/50 uppercase tracking-widest">OFFICIAL PL CLUBS (2025/26)</div>
+          <span class="text-[9px] font-mono text-pl-green bg-pl-green/10 border border-pl-green/30 px-1 py-0.5">REAL SQUADS</span>
+        </div>
+        <div class="grid grid-cols-1 gap-2" id="club-presets-container">
+          <!-- Will be rendered via JS from Premier League data -->
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- CENTER CANVAS: 90° DIRECT TOP-DOWN FOOTBALL PITCH -->
+    <section class="relative flex flex-col items-center justify-center p-2 lg:p-4 bg-[#140016] overflow-hidden" aria-label="Tactical Pitch Arena">
+      
+      <!-- Pitch Container with Aspect Ratio and Pitch Line Markings -->
+      <div id="pitch-container" role="application" aria-label="Tactical pitch checkerboard. Click or drag tokens, or use arrow keys to nudge active player." class="relative w-full max-w-[980px] h-[580px] bg-pl-fielddark pitch-stripes border-4 border-white shadow-2xl overflow-hidden cursor-crosshair">
+        
+        <!-- Overhead Grass Lines SVG Overlay -->
+        <svg class="absolute inset-0 w-full h-full pointer-events-none z-0" viewBox="0 0 1000 620" preserveAspectRatio="none" aria-hidden="true">
+          <!-- Outer boundary line -->
+          <rect x="25" y="25" width="950" height="570" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="3" />
+          
+          <!-- Halfway line -->
+          <line x1="500" y1="25" x2="500" y2="595" stroke="rgba(255,255,255,0.85)" stroke-width="3" />
+          
+          <!-- Center circle & spot -->
+          <circle cx="500" cy="310" r="75" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="3" />
+          <circle cx="500" cy="310" r="4.5" fill="white" />
+          
+          <!-- Left Penalty Box (User 11 goal area) -->
+          <rect x="25" y="145" width="145" height="330" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="3" />
+          <!-- Left 6-yard box -->
+          <rect x="25" y="225" width="55" height="170" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="3" />
+          <!-- Left Penalty spot & Arc -->
+          <circle cx="125" cy="310" r="3.5" fill="white" />
+          <path d="M 170 245 A 75 75 0 0 1 170 375" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="3" />
+          <!-- Left Goal Netting Behind Line -->
+          <rect x="5" y="260" width="20" height="100" fill="rgba(255,255,255,0.15)" stroke="white" stroke-width="2" stroke-dasharray="3,3" />
+
+          <!-- Right Penalty Box (AI goal area) -->
+          <rect x="830" y="145" width="145" height="330" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="3" />
+          <!-- Right 6-yard box -->
+          <rect x="920" y="225" width="55" height="170" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="3" />
+          <!-- Right Penalty spot & Arc -->
+          <circle cx="875" cy="310" r="3.5" fill="white" />
+          <path d="M 830 245 A 75 75 0 0 0 830 375" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="3" />
+          <!-- Right Goal Netting Behind Line -->
+          <rect x="975" y="260" width="20" height="100" fill="rgba(255,255,255,0.15)" stroke="white" stroke-width="2" stroke-dasharray="3,3" />
+
+          <!-- Corner Arcs -->
+          <path d="M 25 45 A 20 20 0 0 0 45 25" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="3" />
+          <path d="M 25 575 A 20 20 0 0 1 45 595" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="3" />
+          <path d="M 975 45 A 20 20 0 0 1 955 25" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="3" />
+          <path d="M 975 575 A 20 20 0 0 0 955 595" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="3" />
+        </svg>
+
+        <!-- Dynamic Vector Passing / Movement Lines SVG Layer -->
+        <svg id="vector-layer" class="absolute inset-0 w-full h-full pointer-events-none z-10" aria-hidden="true">
+          <!-- Populated dynamically via JS: pass targets, shot corridor, movement path -->
+        </svg>
+
+        <!-- Player Checker Discs (User 11 + AI 11) & Match Ball Container -->
+        <div id="pieces-layer" class="absolute inset-0 w-full h-full z-20 pointer-events-auto">
+          <!-- Populated by JS -->
+        </div>
+
+        <!-- Pitch HUD Overlays -->
+        <div class="absolute top-2 left-3 z-30 pointer-events-none flex items-center gap-2">
+          <div class="bg-pl-purple/90 border border-pl-green/50 text-[10px] font-mono px-2 py-0.5 text-pl-green font-bold shadow">
+            ATTACK DIRECTION &rarr;
+          </div>
+          <div id="possession-hud" class="bg-black/60 text-[9px] font-mono px-2 py-0.5 text-white/80 border border-white/20">
+            BALL AT: <span class="text-pl-cyan font-bold">#7 (YOU 11)</span>
+          </div>
+        </div>
+
+        <div class="absolute bottom-2 right-3 z-30 pointer-events-none bg-pl-purple/90 border border-pl-magenta/60 text-[10px] font-mono px-2 py-0.5 text-pl-magenta font-bold shadow">
+          &larr; AI DEFENSIVE THIRD
+        </div>
+
+        <!-- Coordinates readout badge -->
+        <div class="absolute bottom-2 left-3 z-30 pointer-events-none bg-black/75 border border-white/20 text-[9px] font-mono px-2 py-0.5 text-white/70">
+          GRID: <span id="mouse-coords" class="text-pl-cyan font-bold">X: 50% | Y: 50%</span>
+        </div>
+
+      </div>
+
+      <!-- Quick Action Floating Bar Below Pitch -->
+      <div class="w-full max-w-[980px] mt-2.5 bg-[#200024] border border-pl-border px-3 py-2 flex items-center justify-between gap-2 flex-wrap" role="toolbar" aria-label="Tactical Action Dock">
+        <div class="flex items-center gap-2 text-xs font-mono">
+          <span class="text-white/40">ACTION DOCK:</span>
+          <button onclick="passToNearestTeammate()" aria-label="Pass ball to nearest teammate (HotKey P)" class="bg-[#2f0035] hover:bg-pl-green hover:text-pl-purple text-pl-green border border-pl-green/40 font-bold px-2.5 py-1 flex items-center gap-1 transition-colors">
+            <span class="material-symbols-outlined text-sm" aria-hidden="true">sports_soccer</span>
+            <span>PASS [P]</span>
+          </button>
+          <button onclick="triggerShot()" aria-label="Shoot on opponent goal (HotKey S)" class="bg-[#2f0035] hover:bg-pl-magenta hover:text-white text-pl-magenta border border-pl-magenta/40 font-bold px-2.5 py-1 flex items-center gap-1 transition-colors">
+            <span class="material-symbols-outlined text-sm" aria-hidden="true">crisis_alert</span>
+            <span>SHOOT [S]</span>
+          </button>
+          <button onclick="executeAction('DRIBBLE')" aria-label="Dribble advance with ball (HotKey D)" class="bg-[#2f0035] hover:bg-pl-cyan hover:text-pl-purple text-pl-cyan border border-pl-cyan/40 font-bold px-2.5 py-1 flex items-center gap-1 transition-colors">
+            <span class="material-symbols-outlined text-sm" aria-hidden="true">fast_forward</span>
+            <span>DRIBBLE [D]</span>
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <span class="hidden sm:inline-block text-[9px] font-mono text-white/40 uppercase">ARROWS: NUDGE | SPACE: PAUSE</span>
+          <button onclick="recenterFormation()" aria-label="Recenter formation to tactical base positions (HotKey R)" class="bg-[#18001c] hover:bg-white/10 text-white/60 hover:text-white border border-white/20 text-[11px] font-mono px-2 py-1 uppercase">
+            RECENTER [R]
+          </button>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- RIGHT PANEL: MATCH ACTIONS, AI TACTIC & EVENT FEED -->
+    <aside class="bg-[#210025] border-l border-pl-border flex flex-col h-full overflow-hidden z-20" aria-label="Match Telemetry & Controls">
+      
+      <!-- Panel Header -->
+      <div class="p-3 bg-[#19001d] border-b border-pl-border flex items-center justify-between">
+        <span class="text-xs font-display font-black text-white uppercase tracking-wider">MATCH COMMAND & TELEMETRY</span>
+        <span class="text-[10px] font-mono bg-pl-green/10 text-pl-green px-1.5 py-0.5 border border-pl-green/30 font-bold">LIVE SYNC</span>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
+        
+        <!-- Active Piece Manual Action Buttons -->
+        <div class="bg-[#2b0031] p-3 border border-pl-border" role="region" aria-label="Active Checker Piece Details">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[10px] font-mono uppercase tracking-wider text-pl-cyan font-bold">ACTIVE CHECKER PIECE</span>
+            <span id="active-token-coords" class="text-[9px] font-mono text-white/50">POS: 50%, 50%</span>
+          </div>
+
+          <div class="flex items-center gap-2.5 mb-2.5 bg-[#19001d] p-2 border border-white/10">
+            <div id="active-token-badge" class="w-8 h-8 rounded-full bg-pl-green text-pl-purple font-display font-black text-xs flex items-center justify-center border-2 border-white shadow">
+              #7
+            </div>
+            <div class="flex-1 min-w-0">
+              <div id="active-player-name" class="font-display font-black text-xs text-white truncate">BUKAYO SAKA</div>
+              <div id="active-player-role" class="text-[10px] font-mono text-pl-cyan font-bold">RIGHT WINGER (RW)</div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 gap-1.5">
+            <button onclick="executeAction('PASS')" aria-label="Pass ball from active player" class="bg-[#1b001f] hover:bg-pl-green hover:text-pl-purple text-pl-green border border-pl-green/50 font-display font-black text-xs py-2 px-2.5 uppercase tracking-wider text-left flex items-center justify-between transition-colors">
+              <span>PASS BALL</span>
+              <span class="text-[10px] font-mono font-bold" aria-hidden="true">&odot;</span>
+            </button>
+
+            <button onclick="executeAction('SHOOT')" aria-label="Shoot on goal from active player" class="bg-[#1b001f] hover:bg-pl-magenta hover:text-white text-pl-magenta border border-pl-magenta/50 font-display font-black text-xs py-2 px-2.5 uppercase tracking-wider text-left flex items-center justify-between transition-colors">
+              <span>SHOOT GOAL</span>
+              <span class="text-[10px] font-mono font-bold" aria-hidden="true">&target;</span>
+            </button>
+
+            <button onclick="executeAction('PRESS')" aria-label="Step team defensive press up" class="bg-[#1b001f] hover:bg-white hover:text-pl-purple text-white border border-white/40 font-display font-black text-xs py-2 px-2.5 uppercase tracking-wider text-left flex items-center justify-between transition-colors">
+              <span>HIGH PRESS</span>
+              <span class="text-[10px] font-mono font-bold" aria-hidden="true">&DoubleUpArrow;</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- AI Opponent Tactical Mindset Selector -->
+        <div class="bg-[#2b0031] p-3 border border-pl-border" role="region" aria-label="AI Tactical Strategy">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[10px] font-mono uppercase tracking-wider text-pl-magenta font-bold">AI OPPONENT TACTIC</span>
+            <span id="ai-status-indicator" class="text-[9px] font-mono text-white/50">AGGRESSIVE</span>
+          </div>
+
+          <div class="grid grid-cols-3 gap-1" role="group" aria-label="AI Tactical Style">
+            <button id="ai-style-balanced" onclick="setAIStyle('BALANCED')" aria-pressed="false" class="bg-[#1a001e] text-white/70 hover:text-white border border-white/20 text-[10px] font-mono font-bold py-1.5 uppercase transition-colors">
+              BALANCED
+            </button>
+            <button id="ai-style-press" onclick="setAIStyle('HIGH PRESS')" aria-pressed="true" class="bg-pl-magenta text-white border border-white text-[10px] font-mono font-bold py-1.5 uppercase transition-colors">
+              HIGH PRESS
+            </button>
+            <button id="ai-style-counter" onclick="setAIStyle('COUNTER')" aria-pressed="false" class="bg-[#1a001e] text-white/70 hover:text-white border border-white/20 text-[10px] font-mono font-bold py-1.5 uppercase transition-colors">
+              COUNTER
+            </button>
+          </div>
+        </div>
+
+        <!-- Sharp Rectangular Live Possession Bar -->
+        <div class="bg-[#2b0031] p-3 border border-pl-border" role="region" aria-label="Live Match Possession & Telemetry">
+          <div class="flex justify-between items-center text-[10px] font-mono font-bold mb-1.5">
+            <span class="text-pl-green flex items-center gap-1">YOU 11: <span id="possession-val-user">50%</span></span>
+            <span class="text-white/40">POSSESSION</span>
+            <span class="text-pl-magenta flex items-center gap-1">AI: <span id="possession-val-ai">50%</span></span>
+          </div>
+
+          <!-- Dual Colored Bar (0px Sharp) -->
+          <div class="w-full h-3 bg-pl-dark flex border border-white/20 p-0.5" role="progressbar" aria-label="Possession distribution" aria-valuenow="50" aria-valuemin="0" aria-valuemax="100">
+            <div id="bar-possession-user" class="h-full bg-pl-green transition-all duration-300" style="width: 50%;"></div>
+            <div id="bar-possession-ai" class="h-full bg-pl-magenta transition-all duration-300" style="width: 50%;"></div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-pl-border/60 text-center">
+            <div>
+              <div class="text-[9px] font-mono text-white/50">PASS ACC</div>
+              <div id="stat-pass-acc" class="font-mono text-xs font-bold text-pl-green">91%</div>
+            </div>
+            <div>
+              <div class="text-[9px] font-mono text-white/50">SHOTS (ON)</div>
+              <div id="stat-shots" class="font-mono text-xs font-bold text-white">0 (0)</div>
+            </div>
+            <div>
+              <div class="text-[9px] font-mono text-white/50">xG VALUE</div>
+              <div id="stat-xg" class="font-mono text-xs font-bold text-pl-cyan">0.00</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Play-by-Play Event Feed -->
+        <div class="bg-[#27002c] border border-pl-border flex-1 flex flex-col min-h-[220px]" role="region" aria-label="Match Commentary Feed">
+          <div class="p-2 bg-[#1f0023] border-b border-pl-border flex items-center justify-between">
+            <span class="text-[11px] font-display font-black text-white uppercase tracking-wider">MATCH EVENT LOG</span>
+            <button onclick="clearEventLog()" aria-label="Clear commentary event log" class="text-[9px] font-mono text-white/40 hover:text-white uppercase">CLEAR</button>
+          </div>
+
+          <div id="event-feed-list" role="log" aria-live="polite" class="flex-1 p-2 space-y-1.5 overflow-y-auto max-h-[260px] font-mono text-[10px]">
+            <!-- Dynamic Feed Items -->
+          </div>
+        </div>
+
+      </div>
+
+    </aside>
+
+  </main>
+
+  <!-- Lightweight Radash Utility Suite (<10KB) -->
+  <script src="../static/js/radash.min.js"></script>
+  <!-- Main Simulator Engine (100% Legacy Vanilla JS) -->
+  <script src="../static/js/simulator.js"></script>
+</body>
+</html>
