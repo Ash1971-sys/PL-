@@ -102,155 +102,131 @@
   };
 
   // -------------------------------------------------------------
-  // INITIALIZATION
-  // -------------------------------------------------------------
-  document.addEventListener('DOMContentLoaded', function() {
-    initCurtainAnimation();
-    fetchDatasets();
-  });
+  // Only request the selected season. Reuse in-flight and previously loaded requests.
+  var requests = {};
+  var leaders;
+  var duel;
+  var loadVersion = 0;
 
-  function fetchDatasets() {
-    function tryFetch(filename) {
-      var candidatePaths = [
-        'static/data/' + filename,
-        '../static/data/' + filename,
-        '/static/data/' + filename
-      ];
-
-      return new Promise(function(resolve, reject) {
-        function attempt(index) {
-          if (index >= candidatePaths.length) {
-            reject(new Error('Failed to load ' + filename));
-            return;
-          }
-          fetch(candidatePaths[index])
-            .then(function(res) {
-              if (res.ok) return res.json().then(resolve);
-              attempt(index + 1);
-            })
-            .catch(function() {
-              attempt(index + 1);
-            });
-        }
-        attempt(0);
+  function fetchData(path) {
+    if (!requests[path]) {
+      requests[path] = fetch('/api/' + path).then(function(response) {
+        if (!response.ok) throw new Error('Archive request failed');
+        return response.json();
+      }).catch(function(error) {
+        delete requests[path];
+        throw error;
       });
     }
+    return requests[path];
+  }
 
-    Promise.all([
-      tryFetch('matches_2021_2026.json'),
-      tryFetch('players_2025_2026.json')
-    ]).then(function(results) {
-      state.matches = results[0];
-      state.players = results[1];
+  function loadSeason(kind, season) {
+    var version = ++loadVersion;
+    var status = document.getElementById('dataset-status');
+    var table = document.getElementById(kind === 'matches' ? 'matchesTableBody' : 'playersTableBody');
+    status.textContent = 'Loading ' + (season === 'all' ? 'all seasons' : season) + '…';
+    status.hidden = false;
+    table.setAttribute('aria-busy', 'true');
+    state[kind] = [];
+    var render = kind === 'matches' ? renderMatchArchive : renderPlayerHub;
+    var renderTable = kind === 'matches' ? renderMatchesTable : renderPlayerTable;
+    renderTable([]);
 
-      // Mark progress bar ready
-      var curtainBar = document.getElementById('curtainBar');
-      var loadPct = document.getElementById('loadPct');
-      if (curtainBar) curtainBar.style.width = '100%';
-      if (loadPct) loadPct.innerText = '100% AUDITED';
-
-      initGlobalTicker();
-
-      if (document.getElementById('matchesTableBody')) {
-        initMatchArchiveView();
+    fetchData(kind + '/' + String(season).replace('/', '-')).then(function(rows) {
+      if (version !== loadVersion) return;
+      state[kind] = rows;
+      if (kind === 'matches') {
+        fillMatchClubFilter();
+      } else {
+        fillPlayerClubFilter();
       }
-      if (document.getElementById('playersTableBody')) {
-        initPlayerHubView();
-      }
-    }).catch(function(err) {
-      console.error('Critical dataset fetch failure:', err);
-      var errBanner = document.createElement('div');
-      errBanner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#ff2882;color:#fff;padding:12px;font-family:monospace;font-size:12px;font-weight:bold;text-align:center;z-index:999999;';
-      errBanner.innerText = 'DATASET ARCHIVE LOAD ERROR: ' + err.message;
-      document.body.prepend(errBanner);
+      status.hidden = true;
+      table.removeAttribute('aria-busy');
+      render();
+    }).catch(function() {
+      if (version !== loadVersion) return;
+      table.removeAttribute('aria-busy');
+      status.textContent = 'This season could not load. ';
+      var retry = document.createElement('button');
+      retry.textContent = 'Retry';
+      retry.className = 'underline font-bold';
+      retry.addEventListener('click', function() { loadSeason(kind, season); });
+      status.appendChild(retry);
     });
   }
 
-  // -------------------------------------------------------------
-  // 1. BROADCAST SPLASH CURTAIN ANIMATION
-  // -------------------------------------------------------------
-  function initCurtainAnimation() {
+  document.addEventListener('DOMContentLoaded', function() {
+    if (document.getElementById('matchesTableBody')) {
+      initOpeningCurtain();
+      initMatchArchiveView();
+      fetchData('archive-summary').then(function(summary) {
+        leaders = summary.leaders;
+        duel = summary.duel;
+        renderHeroKPICards(getFilteredMatches());
+        renderRightLeaderboard();
+        renderHeadToHeadDuel();
+      }).catch(function() {
+        document.getElementById('leaderboardList').textContent = 'Player leaders are temporarily unavailable.';
+        document.getElementById('h2hMetricsContainer').textContent = 'Comparison temporarily unavailable.';
+      });
+    } else if (document.getElementById('playersTableBody')) {
+      initPlayerHubView();
+    }
+  });
+
+  function initOpeningCurtain() {
     var curtain = document.getElementById('broadcastCurtain');
-    var curtainTop = document.getElementById('curtainTop');
-    var curtainBottom = document.getElementById('curtainBottom');
-    var curtainLaser = document.getElementById('curtainLaser');
-    var enterBtn = document.getElementById('enterHubBtn');
-    var replayBtn = document.getElementById('replayIntroBtn');
+    if (!curtain || typeof curtain.showModal !== 'function') return;
+
+    var topPanel = document.getElementById('curtainTop');
+    var enter = document.getElementById('enterHubBtn');
+    var replay = document.getElementById('replayIntroBtn');
+    var returnFocus = document.getElementById('main-content');
+    var timer;
+
+    function finishOpening() {
+      clearTimeout(timer);
+      curtain.close();
+      curtain.classList.remove('is-opening');
+      returnFocus.focus({ preventScroll: true });
+    }
 
     function openCurtain() {
-      if (!curtainTop || !curtainBottom) return;
-      curtainTop.classList.add('curtain-open-top');
-      curtainBottom.classList.add('curtain-open-bottom');
-      if (curtainLaser) curtainLaser.style.opacity = '0';
-      if (curtain) {
-        curtain.style.pointerEvents = 'none';
-        setTimeout(function() {
-          curtain.style.display = 'none';
-        }, 900);
+      if (curtain.classList.contains('is-opening')) return;
+      curtain.classList.add('is-opening');
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        finishOpening();
+      } else {
+        timer = setTimeout(finishOpening, 950);
       }
     }
 
-    function replayCurtain() {
-      if (!curtain || !curtainTop || !curtainBottom) return;
-      curtain.style.display = 'flex';
-      curtain.style.pointerEvents = 'auto';
-      // Force repaint
-      void curtain.offsetWidth;
-      curtainTop.classList.remove('curtain-open-top');
-      curtainBottom.classList.remove('curtain-open-bottom');
-      if (curtainLaser) curtainLaser.style.opacity = '1';
-    }
-
-    if (enterBtn) enterBtn.addEventListener('click', openCurtain);
-    if (replayBtn) replayBtn.addEventListener('click', replayCurtain);
-
-    // ESC dismisses
-    window.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape' && curtain && curtain.style.display !== 'none') {
-        openCurtain();
+    topPanel.addEventListener('transitionend', function(event) {
+      if (event.target === topPanel && event.propertyName === 'transform' && curtain.classList.contains('is-opening')) {
+        finishOpening();
       }
     });
+    enter.addEventListener('click', openCurtain);
+    curtain.addEventListener('cancel', function(event) {
+      event.preventDefault();
+      openCurtain();
+    });
+    replay.addEventListener('click', function() {
+      returnFocus = replay;
+      curtain.showModal();
+    });
+    replay.hidden = false;
+    if (!window.location.hash) curtain.showModal();
   }
 
-  // -------------------------------------------------------------
-  // 2. CONTINUOUS BROADCAST TICKER
-  // -------------------------------------------------------------
-  function initGlobalTicker() {
-    var ticker = document.getElementById('tickerTrack');
-    if (!ticker || !state.matches || !state.matches.length) return;
-
-    // Pick 20 high-profile recent matches with 3+ goals
-    var sample = state.matches.filter(function(m) {
-      return (m.home_goals + m.away_goals >= 3);
-    }).slice(0, 20);
-
-    var html = sample.map(function(m) {
-      var hCode = CLUB_CODES[m.home_team] || m.home_team.substring(0, 3).toUpperCase();
-      var aCode = CLUB_CODES[m.away_team] || m.away_team.substring(0, 3).toUpperCase();
-      return [
-        '<div class="flex items-center gap-6 px-4">',
-        '  <span class="text-white font-semibold">[' + m.season + ' GW' + m.matchweek + ']:</span>',
-        '  <span>' + hCode + ' <strong class="text-[#00ff85] bg-[#37003c] px-1 py-0.2">' + m.home_goals + ' - ' + m.away_goals + '</strong> ' + aCode + '</span>',
-        '  <span class="text-[#ff2882]">✦</span>',
-        '  <span class="text-[#05f0ff]">xG ' + m.home_xg + ' - ' + m.away_xg + '</span>',
-        '</div>'
-      ].join('');
-    }).join('');
-
-    ticker.innerHTML = html + html;
-  }
-
-  // -------------------------------------------------------------
-  // 3. MATCH ARCHIVE & HOME VIEW LOGIC
-  // -------------------------------------------------------------
   function initMatchArchiveView() {
-    populateMatchClubsDropdown();
     populateMatchRoundsDropdown();
     bindMatchArchiveEvents();
-    renderMatchArchive();
+    loadSeason('matches', state.matchSeason);
   }
 
-  function populateMatchClubsDropdown() {
+  function fillMatchClubFilter() {
     var select = document.getElementById('clubFilterSelect');
     if (!select || !state.matches) return;
 
@@ -259,11 +235,13 @@
     );
     clubs = radash.alphabetical(clubs, function(c) { return c; });
 
-    select.innerHTML = '<option value="All">ALL 20 PREMIER CLUBS</option>' +
+    select.innerHTML = '<option value="All">ALL CLUBS</option>' +
       clubs.map(function(c) {
         var code = CLUB_CODES[c] || c.substring(0, 3).toUpperCase();
         return '<option value="' + c + '">' + c.toUpperCase() + ' (' + code + ')</option>';
       }).join('');
+    if (clubs.indexOf(state.matchClub) === -1) state.matchClub = 'All';
+    select.value = state.matchClub;
   }
 
   function populateMatchRoundsDropdown() {
@@ -291,12 +269,7 @@
         state.matchPage = 1;
         state.expandedMatchIndex = null;
         
-        var headerLabel = document.getElementById('headerSeasonLabel');
-        if (headerLabel) {
-          headerLabel.innerText = state.matchSeason === 'all' ? '2021–2026' : state.matchSeason;
-        }
-
-        renderMatchArchive();
+        loadSeason('matches', state.matchSeason);
       });
     });
 
@@ -435,8 +408,6 @@
     renderHeroKPICards(filtered);
     renderMatchesTable(filtered);
     renderPagination(filtered);
-    renderRightLeaderboard();
-    renderHeadToHeadDuel();
   }
 
   function renderHeroKPICards(matches) {
@@ -450,15 +421,20 @@
 
     if (kpiTotal) kpiTotal.innerText = total.toLocaleString();
     if (kpiAvg) kpiAvg.innerText = avgGoals;
+    var avgXg = document.getElementById('kpiAvgXg');
+    if (avgXg) {
+      var sumXg = radash.sum(matches, function(match) { return match.home_xg + match.away_xg; });
+      avgXg.textContent = total ? 'xG / MATCH: ' + (sumXg / total).toFixed(2) : 'xG / MATCH: —';
+    }
     if (badge) badge.innerText = 'SYNCED: ' + total.toLocaleString() + ' / ' + state.matches.length.toLocaleString();
 
-    // Top scorer & playmaker from players dataset
-    var activePlayers = state.players.filter(function(p) {
-      return state.matchSeason === '2025/26' ? p.season === 2026 : p.season === 2025;
-    });
-
-    var topScorer = radash.boil(activePlayers, function(a, b) { return a.goals > b.goals; });
-    var topAssister = radash.boil(activePlayers, function(a, b) { return a.assists > b.assists; });
+    var latest = state.matchSeason === '2025/26' || state.matchSeason === 'all';
+    var campaign = leaders && leaders[latest ? 2026 : 2025];
+    var campaignLabel = latest ? '2025/26 projection' : '2024/25 player data';
+    document.getElementById('scorer-campaign').textContent = campaignLabel;
+    document.getElementById('assist-campaign').textContent = campaignLabel;
+    var topScorer = campaign && campaign.goals[0];
+    var topAssister = campaign && campaign.assists[0];
 
     if (topScorer) {
       var nameEl = document.getElementById('kpiTopScorerName');
@@ -553,8 +529,11 @@
       if (isExpanded) {
         var possH = m.possession_home || 50;
         var possA = 100 - possH;
-        var totalShots = (m.home_shots || 12) + (m.away_shots || 8);
-        var shotsHPct = Math.round(((m.home_shots || 12) / totalShots) * 100);
+        var totalShots = m.home_shots + m.away_shots;
+        var shotsHPct = totalShots ? Math.round(m.home_shots / totalShots * 100) : 50;
+        var maxXg = Math.max(m.home_xg, m.away_xg, 0.01);
+        var corners = m.home_corners + m.away_corners;
+        var homeCornersPct = corners ? 100 * m.home_corners / corners : 50;
         var shotsAPct = 100 - shotsHPct;
 
         rowsHtml.push(
@@ -563,7 +542,7 @@
           '    <div class="p-5 flex flex-col gap-4">',
           '      <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-[#00ff85]/30 gap-2">',
           '        <div class="flex items-center gap-2">',
-          '          <span class="font-mono text-[10px] bg-[#00ff85] text-[#37003c] px-2 py-0.5 font-bold">LIVE TELEMETRY INLINE</span>',
+          '          <span class="font-mono text-[10px] bg-[#00ff85] text-[#37003c] px-2 py-0.5 font-bold">MODELLED MATCH</span>',
           '          <span class="font-display font-bold text-sm tracking-wide uppercase text-white">TACTICAL MATRIX: ' + hCode + ' ' + m.home_goals + '–' + m.away_goals + ' ' + aCode + '</span>',
           '        </div>',
           '        <div class="font-mono text-xs text-[#00ff85]">',
@@ -571,41 +550,21 @@
           '        </div>',
           '      </div>',
           '      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">',
-          '        <!-- Col 1: Micro SVG xG Accumulation Timeline -->',
-          '        <div class="bg-[#240028] p-3 border border-[#00ff85]/30 flex flex-col justify-between">',
-          '          <div class="flex justify-between items-center text-[10px] font-mono text-[#00ff85] mb-2 uppercase">',
-          '            <span>xG ACCUMULATION CURVE</span>',
-          '            <span class="text-[#ff2882]">FULL MATCH TIMELINE</span>',
-          '          </div>',
-          '          <div class="w-full h-24 my-1 relative bg-[#1a001d] border border-[#37003c]">',
-          '            <svg class="w-full h-full" preserveAspectRatio="none" viewBox="0 0 260 70">',
-          '              <line stroke="#37003c" stroke-width="1" x1="0" x2="260" y1="65" y2="65"></line>',
-          '              <line stroke="#37003c" stroke-dasharray="2,2" x1="0" x2="260" y1="35" y2="35"></line>',
-          '              <line stroke="#00ff85" stroke-dasharray="2,2" stroke-width="0.8" x1="130" x2="130" y1="0" y2="70"></line>',
-          '              <!-- Away Line -->',
-          '              <polyline fill="none" points="0,65 50,60 100,56 130,52 170,45 220,40 260,36" stroke="#d1d1d6" stroke-width="1.8"></polyline>',
-          '              <!-- Home Line -->',
-          '              <polyline fill="none" points="0,65 40,58 70,36 120,32 160,20 210,14 260,8" stroke="#00ff85" stroke-width="2.5"></polyline>',
-          '              <rect fill="#00ff85" height="5" width="5" x="68" y="34"></rect>',
-          '              <rect fill="#00ff85" height="5" width="5" x="158" y="18"></rect>',
-          '              <rect fill="#ff2882" height="5" width="5" x="218" y="38"></rect>',
-          '            </svg>',
-          '          </div>',
-          '          <div class="flex justify-between font-mono text-[10px] text-[#d1d1d6] pt-1 border-t border-[#37003c]">',
-          '            <span>00\' KO</span>',
-          '            <span class="text-[#00ff85] font-bold">HT: ' + Math.min(m.home_goals, 1) + '-' + Math.min(m.away_goals, 1) + '</span>',
-          '            <span>90\' FT (' + m.home_xg + ' vs ' + m.away_xg + ' xG)</span>',
-          '          </div>',
+          '        <div class="bg-[#240028] p-3 border border-[#00ff85]/30">',
+          '          <p class="font-mono text-xs font-bold text-[#00ff85]">EXPECTED GOALS</p>',
+          '          <p class="mt-2 text-xs">' + hCode + ' · ' + m.home_xg.toFixed(2) + '</p>',
+          '          <div class="h-2 bg-[#00ff85]" style="width:' + (100 * m.home_xg / maxXg) + '%"></div>',
+          '          <p class="mt-2 text-xs">' + aCode + ' · ' + m.away_xg.toFixed(2) + '</p>',
+          '          <div class="h-2 bg-[#ff2882]" style="width:' + (100 * m.away_xg / maxXg) + '%"></div>',
           '        </div>',
-          '        <!-- Col 2: Shot Efficiency Stats & PPDA -->',
           '        <div class="bg-[#240028] p-3 border border-[#00ff85]/30 flex flex-col justify-between">',
-          '          <span class="font-mono text-[10px] uppercase text-[#00ff85]">SHOT CONVERSION & PRESSING</span>',
+          '          <span class="font-mono text-[10px] uppercase text-[#00ff85]">SHOTS & SET PIECES</span>',
           '          <div class="space-y-2.5 my-2">',
           '            <div>',
           '              <div class="flex justify-between font-mono text-[11px] mb-1">',
-          '                <span class="text-[#00ff85] font-bold">' + (m.home_shots || 14) + ' (' + (m.home_shots_on_target || 6) + ' ON)</span>',
+          '                <span class="text-[#00ff85] font-bold">' + m.home_shots + ' (' + m.home_shots_on_target + ' ON)</span>',
           '                <span class="text-[#d1d1d6] text-[10px] uppercase">TOTAL SHOTS</span>',
-          '                <span class="text-[#ff2882] font-bold">' + (m.away_shots || 9) + ' (' + (m.away_shots_on_target || 3) + ' ON)</span>',
+          '                <span class="text-[#ff2882] font-bold">' + m.away_shots + ' (' + m.away_shots_on_target + ' ON)</span>',
           '              </div>',
           '              <div class="w-full h-2 bg-[#1a001d] flex border border-[#37003c]">',
           '                <div class="bg-[#00ff85] h-full" style="width:' + shotsHPct + '%;"></div>',
@@ -614,19 +573,19 @@
           '            </div>',
           '            <div>',
           '              <div class="flex justify-between font-mono text-[11px] mb-1">',
-          '                <span class="text-[#00ff85] font-bold">' + (m.home_corners || 6) + ' CORNERS</span>',
+          '                <span class="text-[#00ff85] font-bold">' + m.home_corners + ' CORNERS</span>',
           '                <span class="text-[#d1d1d6] text-[10px] uppercase">SET PIECES</span>',
-          '                <span class="text-[#ff2882] font-bold">' + (m.away_corners || 3) + ' CORNERS</span>',
+          '                <span class="text-[#ff2882] font-bold">' + m.away_corners + ' CORNERS</span>',
           '              </div>',
           '              <div class="w-full h-2 bg-[#1a001d] flex border border-[#37003c]">',
-          '                <div class="bg-[#00ff85] h-full" style="width:' + possH + '%;"></div>',
-          '                <div class="bg-[#ff2882] h-full" style="width:' + possA + '%;"></div>',
+          '                <div class="bg-[#00ff85] h-full" style="width:' + homeCornersPct + '%;"></div>',
+          '                <div class="bg-[#ff2882] h-full" style="width:' + (100 - homeCornersPct) + '%;"></div>',
           '              </div>',
           '            </div>',
           '          </div>',
           '          <div class="p-1.5 bg-[#1a001d] font-mono text-[11px] text-[#00ff85] flex justify-between border border-[#37003c]">',
           '            <span>FOULS & DISCIPLINE:</span>',
-          '            <span class="font-bold">' + (m.home_fouls || 11) + 'F (' + (m.home_cards || 1) + 'C) vs ' + (m.away_fouls || 12) + 'F (' + (m.away_cards || 2) + 'C)</span>',
+          '            <span class="font-bold">' + m.home_fouls + 'F (' + m.home_cards + 'C) vs ' + m.away_fouls + 'F (' + m.away_cards + 'C)</span>',
           '          </div>',
           '        </div>',
           '        <!-- Col 3: Tactical Shift & Action -->',
@@ -634,11 +593,11 @@
           '          <div>',
           '            <span class="font-mono text-[10px] uppercase text-[#00ff85] block">TACTICAL MATRIX SUMMARY</span>',
           '            <p class="font-sans text-xs text-[#d1d1d6] mt-1.5 leading-snug">',
-          '              ' + m.home_team + ' maintained ' + possH + '% territory with intense interior overloads, creating an xG divergence of <strong class="text-[#00ff85]">+' + (Math.abs(m.home_xg - m.away_xg)).toFixed(2) + '</strong>.',
+          '              ' + m.home_team + ' had ' + possH + '% possession. The gap between the teams was <strong class="text-[#00ff85]">' + Math.abs(m.home_xg - m.away_xg).toFixed(2) + ' xG</strong>.',
           '            </p>',
           '          </div>',
-          '          <a href="players.html" class="w-full mt-3 bg-[#00ff85] hover:bg-white text-[#37003c] font-display font-black text-xs uppercase py-2 tracking-wider flex items-center justify-center gap-1 transition-colors no-underline">',
-          '            <span class="material-symbols-outlined text-[15px]">query_stats</span> FULL PLAYER SQUAD MATRIX',
+          '          <a href="/players" class="w-full mt-3 bg-[#00ff85] hover:bg-white text-[#37003c] font-display font-black text-xs uppercase py-2 tracking-wider flex items-center justify-center gap-1 transition-colors no-underline">',
+          '            <span class="site-icon text-[15px]" aria-hidden="true">▥</span> FULL PLAYER SQUAD MATRIX',
           '          </a>',
           '        </div>',
           '      </div>',
@@ -662,7 +621,7 @@
   }
 
   function renderStitchFormSquares(formArr) {
-    if (!formArr || !formArr.length) formArr = ['W', 'D', 'W', 'W', 'L'];
+    if (!formArr || !formArr.length) return '';
     return formArr.slice(0, 5).map(function(r) {
       var color = r === 'W' ? '#00ff85' : (r === 'L' ? '#ff2882' : '#d1d1d6');
       return '<span class="w-2.5 h-2.5 inline-block" style="background-color:' + color + ';" title="' + r + '"></span>';
@@ -700,7 +659,7 @@
     }
 
     if (cur < totalPages) {
-      html.push('<button class="pag-btn px-3 h-8 flex items-center justify-center font-bold bg-[#37003c] text-white hover:bg-[#240028] uppercase tracking-wider ml-1 cursor-pointer" data-page="' + (cur + 1) + '">NEXT <span class="material-symbols-outlined text-[14px] ml-0.5">chevron_right</span></button>');
+      html.push('<button class="pag-btn px-3 h-8 flex items-center justify-center font-bold bg-[#37003c] text-white hover:bg-[#240028] uppercase tracking-wider ml-1 cursor-pointer" data-page="' + (cur + 1) + '">NEXT </button>');
     }
 
     controls.innerHTML = html.join('');
@@ -721,17 +680,10 @@
   // -------------------------------------------------------------
   function renderRightLeaderboard() {
     var container = document.getElementById('leaderboardList');
-    if (!container || !state.players || !state.players.length) return;
-
-    var sPlayers = state.players.filter(function(p) {
-      return p.season === state.leaderboardSeason;
-    });
+    if (!container || !leaders) return;
 
     var metric = state.leaderboardMetric;
-    var sorted = radash.sort(sPlayers, function(p) {
-      if (metric === 'xg_xa') return p.xg + p.xa;
-      return p[metric] || 0;
-    }, true).slice(0, 5);
+    var sorted = leaders[state.leaderboardSeason][metric];
 
     var maxVal = sorted.length > 0 ? (metric === 'xg_xa' ? sorted[0].xg + sorted[0].xa : sorted[0][metric]) : 1;
     if (maxVal === 0) maxVal = 1;
@@ -741,7 +693,7 @@
       var code = CLUB_CODES[p.club] || 'PL';
       var val = metric === 'xg_xa' ? (p.xg + p.xa).toFixed(1) : p[metric];
       var valLabel = metric === 'goals' ? 'G' : (metric === 'assists' ? 'A' : (metric === 'xg_xa' ? 'xG+xA' : 'KP'));
-      var sub = metric === 'goals' ? '+' + (p.goals - p.xg).toFixed(1) + ' xG' : (p.key_passes + ' KP');
+      var sub = metric === 'goals' ? (p.goals >= p.xg ? '+' : '') + (p.goals - p.xg).toFixed(1) + ' vs xG' : (p.key_passes + ' KP');
 
       var primaryPct = Math.min(90, Math.round((val / maxVal) * 85));
       var secPct = 100 - primaryPct;
@@ -772,11 +724,9 @@
 
   function renderHeadToHeadDuel() {
     var container = document.getElementById('h2hMetricsContainer');
-    if (!container || !state.players) return;
-
-    var sPlayers = state.players.filter(function(p) { return p.season === 2026; });
-    var pA = sPlayers.find(function(p) { return p.name.indexOf('Haaland') !== -1; }) || sPlayers[0];
-    var pB = sPlayers.find(function(p) { return p.name.indexOf('Palmer') !== -1 || p.name.indexOf('Saka') !== -1; }) || sPlayers[1];
+    if (!container || !duel) return;
+    var pA = duel[0];
+    var pB = duel[1];
 
     if (!pA || !pB) return;
 
@@ -790,11 +740,29 @@
     if (nameB) nameB.innerText = pB.name.toUpperCase();
     if (clubB) clubB.innerText = (CLUB_CODES[pB.club] || 'PL') + ' // ' + pB.position;
 
+    [pA, pB].forEach(function(player, index) {
+      document.getElementById('h2hInitials' + (index === 0 ? 'A' : 'B')).textContent = player.name
+        .split(/\s+/).map(function(name) { return name[0]; }).slice(0, 2).join('').toUpperCase();
+    });
+
+    function ratio(top, bottom, factor) {
+      return bottom > 0 ? top * factor / bottom : null;
+    }
+
+    function metric(label, a, b, suffix) {
+      var max = Math.max(a || 0, b || 0, 0.01);
+      return {
+        label: label, valA: a === null ? '—' : a.toFixed(1) + suffix,
+        valB: b === null ? '—' : b.toFixed(1) + suffix,
+        pctA: 100 * (a || 0) / max, pctB: 100 * (b || 0) / max
+      };
+    }
+
     var metrics = [
-      { label: 'SHOT CONVERSION', valA: '28.4%', valB: '24.1%', pctA: 75, pctB: 60 },
-      { label: 'MINUTES / GOAL', valA: '82 MIN', valB: '114 MIN', pctA: 88, pctB: 58 },
-      { label: 'PROG. CARRIES', valA: '1.8 / 90', valB: '5.2 / 90', pctA: 28, pctB: 86 },
-      { label: 'KEY PASSES / 90', valA: '0.9 / 90', valB: '3.1 / 90', pctA: 22, pctB: 80 }
+      metric('SHOT CONVERSION', ratio(pA.goals, pA.shots, 100), ratio(pB.goals, pB.shots, 100), '%'),
+      metric('MINUTES / GOAL', ratio(pA.minutes, pA.goals, 1), ratio(pB.minutes, pB.goals, 1), ''),
+      metric('CARRIES / 90', ratio(pA.progressive_carries, pA.minutes, 90), ratio(pB.progressive_carries, pB.minutes, 90), ''),
+      metric('KEY PASSES / 90', ratio(pA.key_passes, pA.minutes, 90), ratio(pB.key_passes, pB.minutes, 90), '')
     ];
 
     var html = metrics.map(function(m) {
@@ -827,17 +795,17 @@
     var xgNote = document.getElementById('pitchXgNote');
 
     if (state.pitchMode === 'attacking') {
-      if (overlay) overlay.innerHTML = '<span class="font-mono text-[9px] text-[#ff2882] font-black uppercase">HIGH XG OVERLOAD</span>';
-      if (subNote) subNote.innerText = 'SAKA INVERTED CHANNEL: 68% ACC';
-      if (xgNote) xgNote.innerText = 'DANGER ZONE xG: 1.84';
+      if (overlay) overlay.innerHTML = '<span class="font-mono text-[9px] text-[#ff2882] font-black uppercase">ATTACK ZONE</span>';
+      if (subNote) subNote.innerText = 'WIDE PLAYER MOVES INSIDE';
+      if (xgNote) xgNote.innerText = 'SUPPORT RUN INTO THE BOX';
     } else if (state.pitchMode === 'pressing') {
-      if (overlay) overlay.innerHTML = '<span class="font-mono text-[9px] text-[#00ff85] font-black uppercase">HIGH PRESS 8.4 PPDA</span>';
-      if (subNote) subNote.innerText = 'TURNOVERS WON (FINAL 3RD): 4.2/90';
-      if (xgNote) xgNote.innerText = 'PRESS EFFICIENCY: 82%';
+      if (overlay) overlay.innerHTML = '<span class="font-mono text-[9px] text-[#00ff85] font-black uppercase">HIGH PRESS</span>';
+      if (subNote) subNote.innerText = 'PRESS NEAR THE TOUCHLINE';
+      if (xgNote) xgNote.innerText = 'CLOSE THE RETURN PASS';
     } else {
-      if (overlay) overlay.innerHTML = '<span class="font-mono text-[9px] text-[#05f0ff] font-black uppercase">KEY PASS MATRIX</span>';
-      if (subNote) subNote.innerText = 'THROUGH-BALLS COMPLETED: 14';
-      if (xgNote) xgNote.innerText = 'BOX CROSSES ACC: 74%';
+      if (overlay) overlay.innerHTML = '<span class="font-mono text-[9px] text-[#05f0ff] font-black uppercase">PASSING LANES</span>';
+      if (subNote) subNote.innerText = 'LOOK FOR THE FORWARD RUN';
+      if (xgNote) xgNote.innerText = 'USE THE OPEN CHANNEL';
     }
   }
 
@@ -845,12 +813,11 @@
   // 5. PLAYER HUB VIEW LOGIC (players.html)
   // -------------------------------------------------------------
   function initPlayerHubView() {
-    populatePlayerClubsFilter();
     bindPlayerHubEvents();
-    renderPlayerHub();
+    loadSeason('players', state.playerSeason);
   }
 
-  function populatePlayerClubsFilter() {
+  function fillPlayerClubFilter() {
     var select = document.getElementById('playerClubFilterSelect');
     if (!select || !state.players) return;
 
@@ -861,6 +828,8 @@
       clubs.map(function(c) {
         return '<option value="' + c + '">' + c.toUpperCase() + '</option>';
       }).join('');
+    if (clubs.indexOf(state.playerClub) === -1) state.playerClub = 'All';
+    select.value = state.playerClub;
   }
 
   function bindPlayerHubEvents() {
@@ -875,11 +844,8 @@
         state.playerSeason = parseInt(pill.getAttribute('data-season'), 10);
         state.playerPage = 1;
         
-        var pillHeader = document.getElementById('playerSeasonHeaderPill');
-        if (pillHeader) {
-          pillHeader.innerText = state.playerSeason === 2025 ? '2024/25 CAMPAIGN' : '2025/26 PROJECTED';
-        }
-        renderPlayerHub();
+        state.activePitchPlayer = null;
+        loadSeason('players', state.playerSeason);
       });
     });
 
@@ -967,27 +933,25 @@
       return p[state.playerSortKey] || 0;
     }, state.playerSortDesc);
 
+    if (filtered.indexOf(state.activePitchPlayer) === -1) {
+      state.activePitchPlayer = sorted[0] || null;
+    }
     renderPlayerKPIs(filtered);
     renderPlayerTable(sorted);
     renderPlayerPagination(sorted);
     populateCompareSelectors(filtered);
-
-    // Active pitch player
-    if (!state.activePitchPlayer && sorted.length > 0) {
-      state.activePitchPlayer = sorted[0];
-    }
-    if (state.activePitchPlayer && window.PLCharts) {
-      window.PLCharts.renderTacticalPitch(
-        'tactical-pitch-wrapper',
-        state.activePitchPlayer.pitch_zone,
-        state.activePitchPlayer.name,
-        state.activePitchPlayer.club
-      );
-      var badge = document.getElementById('pitchPlayerBadge');
-      if (badge) badge.innerText = state.activePitchPlayer.name.toUpperCase();
-    }
-
+    renderActivePitch();
     updatePlayerComparisonBars();
+  }
+
+  function renderActivePitch() {
+    var player = state.activePitchPlayer;
+    document.getElementById('pitchPlayerBadge').textContent = player ? player.name.toUpperCase() : 'NO MATCHING PLAYER';
+    if (!player) {
+      document.getElementById('tactical-pitch-wrapper').textContent = 'No player matches these filters.';
+    } else if (window.PLCharts) {
+      window.PLCharts.renderTacticalPitch('tactical-pitch-wrapper', player.pitch_zone, player.name, player.club);
+    }
   }
 
   function renderPlayerKPIs(players) {
@@ -996,6 +960,18 @@
     var topAssister = radash.boil(players, function(a, b) { return a.assists > b.assists; });
 
     if (kpiTotal) kpiTotal.innerText = players.length.toLocaleString();
+    var forwards = players.filter(function(player) { return player.position === 'FW' && player.minutes >= 300; });
+    var shots = radash.sum(forwards, function(player) { return player.shots; });
+    var goals = radash.sum(forwards, function(player) { return player.goals; });
+    var minutes = radash.sum(forwards, function(player) { return player.minutes; });
+    document.getElementById('forward-conversion').textContent = shots ? (100 * goals / shots).toFixed(1) + '%' : '—';
+    document.getElementById('forward-shots').textContent = minutes ? 'SHOTS / 90: ' + (90 * shots / minutes).toFixed(1) : 'SHOTS / 90: —';
+
+    if (!players.length) {
+      ['ScorerName', 'ScorerClub', 'ScorerGoals', 'ScorerXg', 'AssisterName', 'AssisterClub', 'AssisterValue', 'AssisterXa'].forEach(function(key) {
+        document.getElementById('playerKpi' + key).textContent = '—';
+      });
+    }
 
     if (topScorer) {
       var sName = document.getElementById('playerKpiScorerName');
@@ -1015,6 +991,7 @@
       if (aName) aName.innerText = topAssister.name.toUpperCase();
       if (aClub) aClub.innerText = CLUB_CODES[topAssister.club] || 'PL';
       if (aVal) aVal.innerText = topAssister.assists + ' ASSISTS';
+      document.getElementById('playerKpiAssisterXa').textContent = '(' + topAssister.xa + ' xA)';
     }
   }
 
@@ -1071,11 +1048,7 @@
           state.activePitchPlayer = found;
           tbody.querySelectorAll('tr').forEach(function(r) { r.classList.remove('row-pitch-active'); });
           row.classList.add('row-pitch-active');
-          if (window.PLCharts) {
-            window.PLCharts.renderTacticalPitch('tactical-pitch-wrapper', found.pitch_zone, found.name, found.club);
-          }
-          var badge = document.getElementById('pitchPlayerBadge');
-          if (badge) badge.innerText = found.name.toUpperCase();
+          renderActivePitch();
         }
       });
     });
@@ -1111,7 +1084,7 @@
     }
 
     if (cur < totalPages) {
-      html.push('<button class="pag-btn px-3 h-8 flex items-center justify-center font-bold bg-[#37003c] text-white hover:bg-[#240028] uppercase tracking-wider ml-1 cursor-pointer" data-page="' + (cur + 1) + '">NEXT <span class="material-symbols-outlined text-[14px] ml-0.5">chevron_right</span></button>');
+      html.push('<button class="pag-btn px-3 h-8 flex items-center justify-center font-bold bg-[#37003c] text-white hover:bg-[#240028] uppercase tracking-wider ml-1 cursor-pointer" data-page="' + (cur + 1) + '">NEXT </button>');
     }
 
     controls.innerHTML = html.join('');
@@ -1128,10 +1101,15 @@
   function populateCompareSelectors(players) {
     var selA = document.getElementById('compare-select-a');
     var selB = document.getElementById('compare-select-b');
-    if (!selA || !selB || !players.length) return;
+    if (!selA || !selB) return;
 
-    if (!state.comparePlayerIdA) state.comparePlayerIdA = players[0].player_id;
-    if (!state.comparePlayerIdB) state.comparePlayerIdB = players.length > 1 ? players[1].player_id : players[0].player_id;
+    var playerA = players.find(function(player) { return player.player_id === state.comparePlayerIdA; }) || players[0];
+    var playerB = players.find(function(player) { return player.player_id === state.comparePlayerIdB; });
+    if (!playerB || players.length < 2) {
+      playerB = players.find(function(player) { return player !== playerA; });
+    }
+    state.comparePlayerIdA = playerA ? playerA.player_id : '';
+    state.comparePlayerIdB = playerB ? playerB.player_id : '';
 
     var options = players.map(function(p) {
       return '<option value="' + p.player_id + '">' + p.name + ' (' + (CLUB_CODES[p.club] || p.club) + ' - ' + p.position + ')</option>';
@@ -1142,6 +1120,7 @@
 
     selA.value = state.comparePlayerIdA;
     selB.value = state.comparePlayerIdB;
+    selA.disabled = selB.disabled = players.length < 2;
   }
 
   function updatePlayerComparisonBars() {
@@ -1154,6 +1133,8 @@
 
     if (pA && pB && window.PLCharts) {
       window.PLCharts.renderPlayerComparison('player-comparison-target', pA, pB);
+    } else {
+      document.getElementById('player-comparison-target').textContent = 'Show at least two matching players to compare them.';
     }
   }
 

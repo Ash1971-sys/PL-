@@ -1,70 +1,12 @@
 /**
  * PREMIER LEAGUE TACTICAL 11 // CHECKER-PIECE SIMULATOR ENGINE
  * Two-Way Autonomous & Interactive Match Engine with Real Player Data Integration
- * Refactored with Radash micro-utilities & 100% Legacy-Compatible Vanilla JS (ES5)
  */
 
 (function () {
   'use strict';
 
-  // Safe reference to Radash micro-utility suite
-  var _R = (typeof window !== 'undefined' && (window.radash || window._r)) || {
-    group: function(arr, fn) {
-      return (arr || []).reduce(function(acc, item) {
-        var k = typeof fn === 'function' ? fn(item) : item[fn];
-        if (!acc[k]) acc[k] = [];
-        acc[k].push(item);
-        return acc;
-      }, {});
-    },
-    sort: function(arr, fn, desc) {
-      var getter = typeof fn === 'function' ? fn : function(x) { return x[fn]; };
-      return (arr || []).slice().sort(function(a, b) {
-        var va = getter(a), vb = getter(b);
-        if (va === vb) return 0;
-        return desc ? (va > vb ? -1 : 1) : (va > vb ? 1 : -1);
-      });
-    },
-    select: function(arr, mapper, cond) {
-      return (arr || []).reduce(function(acc, item, idx) {
-        if (!cond || cond(item, idx)) acc.push(mapper(item, idx));
-        return acc;
-      }, []);
-    },
-    unique: function(arr, fn) {
-      var seen = {}, getter = typeof fn === 'function' ? fn : function(x) { return x; };
-      return (arr || []).filter(function(item) {
-        var k = getter(item);
-        if (seen[k]) return false;
-        seen[k] = true;
-        return true;
-      });
-    },
-    clone: function(obj) {
-      return JSON.parse(JSON.stringify(obj));
-    },
-    throttle: function(fn, ms) {
-      var last = 0;
-      return function() {
-        var now = new Date().getTime();
-        if (now - last >= (ms || 100)) {
-          last = now;
-          fn.apply(this, arguments);
-        }
-      };
-    },
-    debounce: function(fn, ms) {
-      var timer = null;
-      return function() {
-        var ctx = this, args = arguments;
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(function() {
-          timer = null;
-          fn.apply(ctx, args);
-        }, ms || 150);
-      };
-    }
-  };
+  var decisionModel = window.PLTacticalAI;
 
   // SOUND SYNTHESIZER (Web Audio API - Safe feature-detected synthesizer)
   var audioCtx = null;
@@ -82,6 +24,7 @@
   }
 
   function playSound(type) {
+    if (!soundEnabled) return;
     try {
       var ctx = getAudioContext();
       if (!ctx) return;
@@ -293,7 +236,7 @@
   var aiSquad = [];
   var currentFormation = '4-3-3';
   var selectedPlayerId = 7;
-  var matchBall = { x: 50, y: 50, holderId: 7, holderTeam: 'user', inFlight: false, vx: 0, vy: 0 };
+  var matchBall = { x: 50, y: 50, holderId: 7, holderTeam: 'user' };
   var matchSeconds = 0;
   var userScore = 0;
   var aiScore = 0;
@@ -301,23 +244,89 @@
   var simSpeed = 1;
   var simInterval = null;
   var aiStyle = 'HIGH PRESS';
+  var aiDifficulty = 'pro';
 
-  var stats = {
-    userPossessionTicks: 50,
-    aiPossessionTicks: 50,
-    userPassesCompleted: 12,
-    userPassesTotal: 14,
-    userShotsTotal: 0,
-    userShotsOnTarget: 0,
-    userXgTotal: 0.00,
-    aiPassesCompleted: 10,
-    aiPassesTotal: 13,
-    aiShotsTotal: 0,
-    aiShotsOnTarget: 0,
-    aiXgTotal: 0.00
+  var tactics = {
+    'BALANCED': { range: 25, chase: 0.24, tackle: 0.30, line: 0, pace: 4.8, directness: 0.85 },
+    'HIGH PRESS': { range: 36, chase: 0.32, tackle: 0.36, line: 6, pace: 4.6, directness: 0.95 },
+    'COUNTER': { range: 21, chase: 0.24, tackle: 0.29, line: -7, pace: 6.5, directness: 1.22 }
+  };
+  var difficulty = {
+    rookie: { press: 0.72, pace: 0.9, variance: 0.15 },
+    pro: { press: 1, pace: 1, variance: 0.055 },
+    elite: { press: 1.19, pace: 1.1, variance: 0.016 }
   };
 
-  var rawPlayersData = [];
+  var MATCH_LENGTH = 90 * 60;
+  var modes = {
+    quick: { minute: 0, score: [0, 0], team: 'user', seconds: 180, afterMove: true, tempo: 1.28,
+      objective: 'Play 90 match minutes in 30 turns. Each move advances the clock by three minutes.' },
+    match: { minute: 0, score: [0, 0], team: 'user', seconds: 30,
+      objective: 'Play a full match in 30-second turns. Use Start to run the clock continuously.' },
+    comeback: { minute: 80, score: [1, 2], team: 'user', seconds: 30, challenge: true,
+      objective: 'You trail 1–2 with ten minutes left. Score twice and finish ahead.' },
+    hold: { minute: 80, score: [1, 0], team: 'ai', seconds: 30, challenge: true,
+      objective: 'You lead 1–0 at 80 minutes. Protect the lead until full time.' },
+    breakthrough: { minute: 75, score: [0, 0], team: 'user', seconds: 60, challenge: true, afterMove: true,
+      startAt: { x: 76, y: 53 }, objective: 'Start with the ball near the box at 75 minutes. Create a goal and win the match.' },
+    corner: { minute: 85, score: [1, 1], team: 'user', seconds: 30, challenge: true, afterMove: true,
+      objective: 'It’s 1–1 at 85 minutes. Take the corner and find a winner.' }
+  };
+  var matchMode = 'quick';
+  var stats = emptyMatchStats();
+  var clubRosters = new Map();
+  var clubRequest;
+  var soundEnabled = false;
+  var ballToken;
+  var hudLabel;
+  var vectorMarkup = '';
+  var lastManualAction = -1;
+  var opponentReadout = 'Ready for kickoff.';
+  var previousPasser = null;
+  var passPreview = null;
+  var pitchWidth = 0;
+  var pitchHeight = 0;
+  var attackButtons = [];
+  var defendButtons = [];
+  var rosterSelection = null;
+  var rosterPossessor = null;
+  var corner = null;
+
+  function emptyMatchStats() {
+    return {
+      userPossessionTicks: 0, aiPossessionTicks: 0,
+      userPassesCompleted: 0, userPassesTotal: 0, userShotsTotal: 0, userShotsOnTarget: 0, userXgTotal: 0,
+      aiPassesCompleted: 0, aiPassesTotal: 0, aiShotsTotal: 0, aiShotsOnTarget: 0, aiXgTotal: 0,
+      userRecoveries: 0, aiRecoveries: 0
+    };
+  }
+
+  function ballHolder() {
+    var isUser = matchBall.holderTeam === 'user';
+    return (isUser ? userSquad : aiSquad)[matchBall.holderId - (isUser ? 1 : 101)];
+  }
+
+  function makePossessor(player) {
+    if (matchBall.holderTeam !== player.team) previousPasser = null;
+    matchBall.holderId = player.id;
+    matchBall.holderTeam = player.team;
+    matchBall.x = player.x + (player.team === 'user' ? 1.2 : -1.2);
+    matchBall.y = player.y;
+  }
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function opposingSquad(player) {
+    return player.team === 'user' ? aiSquad : userSquad;
+  }
+
+  function passOption(passer) {
+    var isUser = passer.team === 'user';
+    return decisionModel.bestPass(passer, isUser ? userSquad : aiSquad, opposingSquad(passer),
+      { direction: isUser ? 1 : -1, directness: 0.8, protect: 0 }, previousPasser);
+  }
 
   // INITIALIZE SQUADS
   function initSquads(userRosterData, aiRosterData) {
@@ -335,7 +344,7 @@
         num: p.num || i + 1,
         name: p.name || ('Player ' + (i + 1)),
         role: coords.role || p.role || 'MF',
-        pos: p.pos || 'MF',
+        pos: p.position || p.pos || 'MF',
         x: coords.x,
         y: coords.y,
         base_x: coords.x,
@@ -356,7 +365,7 @@
         num: ap.num || j + 1,
         name: ap.name || ('Opponent ' + (j + 1)),
         role: aCoords.role || ap.role || 'MF',
-        pos: ap.pos || 'MF',
+        pos: ap.position || ap.pos || 'MF',
         x: aCoords.x,
         y: aCoords.y,
         base_x: aCoords.x,
@@ -381,7 +390,7 @@
     selectedPlayerId = initialHolder.id;
 
     setupDomTokens();
-    updatePitchPieces(true);
+    updatePitchPieces();
     renderTacticalVectors();
     renderRosterList();
     updateActiveTokenCard();
@@ -408,6 +417,7 @@
       el.innerHTML = '<span class="font-mono font-black text-xs leading-none">' + p.num + '</span>' +
                      '<span class="text-[7px] font-mono leading-none tracking-tighter opacity-80 uppercase">' + p.role + '</span>';
       setupPointerDrag(el, p);
+      p.token = el;
       layer.appendChild(el);
     }
 
@@ -418,71 +428,73 @@
       ael.className = 'checker-token checker-ai';
       ael.setAttribute('data-id', ap.id);
       ael.setAttribute('data-team', 'ai');
-      ael.setAttribute('role', 'button');
-      ael.setAttribute('tabindex', '0');
+      ael.setAttribute('aria-hidden', 'true');
       ael.setAttribute('aria-label', 'AI ' + ap.name + ' number ' + ap.num + ' ' + ap.role);
       ael.innerHTML = '<span class="font-mono font-black text-xs leading-none">' + ap.num + '</span>' +
                       '<span class="text-[7px] font-mono leading-none tracking-tighter opacity-80 uppercase">' + ap.role + '</span>';
-      setupPointerDrag(ael, ap);
+      ap.token = ael;
       layer.appendChild(ael);
     }
 
-    var ball = document.createElement('div');
+    var ball = ballToken = document.createElement('div');
     ball.id = 'match-ball';
-    ball.className = 'ball-token ball-pulse';
+    ball.className = 'ball-token';
     ball.setAttribute('aria-hidden', 'true');
     layer.appendChild(ball);
   }
 
   // UPDATE TOKEN POSITIONS ON PITCH
+  function moveToken(token, x, y) {
+    var left = Math.round(x * pitchWidth) / 100;
+    var top = Math.round(y * pitchHeight) / 100;
+    if (token.pitchLeft === left && token.pitchTop === top) return;
+    token.pitchLeft = left;
+    token.pitchTop = top;
+    token.style.translate = left + 'px ' + top + 'px';
+  }
+
+  function watchPitchSize() {
+    var layer = document.getElementById('pieces-layer');
+    function measure() {
+      var width = layer.clientWidth;
+      var height = layer.clientHeight;
+      if (width === pitchWidth && height === pitchHeight) return;
+      pitchWidth = width;
+      pitchHeight = height;
+      if (ballToken) updatePitchPieces();
+    }
+    measure();
+    if (window.ResizeObserver) new ResizeObserver(measure).observe(layer);
+    else window.addEventListener('resize', measure);
+  }
+
+  function writeText(id, value) {
+    var element = document.getElementById(id);
+    if (element && element.textContent !== value) element.textContent = value;
+  }
+
   function updatePitchPieces() {
-    for (var i = 0; i < userSquad.length; i++) {
-      var p = userSquad[i];
-      var el = document.getElementById('token-u-' + p.id);
-      if (el) {
-        el.style.left = p.x + '%';
-        el.style.top = p.y + '%';
-        if (p.id === selectedPlayerId) {
-          el.classList.add('selected-ring');
-          el.style.zIndex = '50';
-          el.setAttribute('aria-selected', 'true');
-        } else {
-          el.classList.remove('selected-ring');
-          el.style.zIndex = '25';
-          el.setAttribute('aria-selected', 'false');
-        }
+    userSquad.forEach(function(player) {
+      var token = player.token;
+      var selected = player.id === selectedPlayerId;
+      moveToken(token, player.x, player.y);
+      if (token.isSelected !== selected) {
+        token.isSelected = selected;
+        token.classList.toggle('selected-ring', selected);
+        token.setAttribute('aria-pressed', String(selected));
       }
-    }
+    });
+    aiSquad.forEach(function(player) { moveToken(player.token, player.x, player.y); });
+    moveToken(ballToken, matchBall.x, matchBall.y);
+    updateRosterStatus();
 
-    for (var j = 0; j < aiSquad.length; j++) {
-      var ap = aiSquad[j];
-      var ael = document.getElementById('token-a-' + ap.id);
-      if (ael) {
-        ael.style.left = ap.x + '%';
-        ael.style.top = ap.y + '%';
-      }
-    }
-
-    var ball = document.getElementById('match-ball');
-    if (ball) {
-      ball.style.left = matchBall.x + '%';
-      ball.style.top = matchBall.y + '%';
-    }
-
+    var holder = ballHolder();
     var hud = document.getElementById('possession-hud');
-    if (hud) {
-      if (matchBall.holderTeam === 'user') {
-        var holder = null;
-        for (var h = 0; h < userSquad.length; h++) {
-          if (userSquad[h].id === matchBall.holderId) { holder = userSquad[h]; break; }
-        }
-        hud.innerHTML = 'BALL AT: <span class="text-pl-cyan font-bold">#' + (holder ? (holder.num + ' ' + holder.name) : 'YOU 11') + '</span>';
-      } else {
-        var aHolder = null;
-        for (var ah = 0; ah < aiSquad.length; ah++) {
-          if (aiSquad[ah].id === matchBall.holderId) { aHolder = aiSquad[ah]; break; }
-        }
-        hud.innerHTML = 'BALL AT: <span class="text-pl-magenta font-bold">#' + (aHolder ? (aHolder.num + ' ' + aHolder.name) : 'AI OPPONENT') + '</span>';
+    if (holder && hud) {
+      var label = 'Ball at #' + holder.num + ' ' + holder.name;
+      if (label !== hudLabel) {
+        hudLabel = label;
+        hud.textContent = label;
       }
     }
   }
@@ -490,20 +502,21 @@
   // POINTER DRAG & DROP FOR ANY CHECKER PIECE
   function setupPointerDrag(el, playerObj) {
     var isDragging = false;
-    var pitch = document.getElementById('pitch-container');
+    var pitch = document.getElementById('pieces-layer');
 
     el.addEventListener('pointerdown', function (e) {
       e.stopPropagation();
+      selectPlayer(playerObj.id);
+      if (!canReposition()) return;
       isDragging = true;
       if (el.setPointerCapture) {
         try { el.setPointerCapture(e.pointerId); } catch (_) {}
       }
-      selectPlayer(playerObj.id);
-      getAudioContext();
+
     });
 
     el.addEventListener('pointermove', function (e) {
-      if (!isDragging || !pitch) return;
+      if (!isDragging || !pitch || !canReposition()) return;
       var rect = pitch.getBoundingClientRect();
       var xPct = ((e.clientX - rect.left) / rect.width) * 100;
       var yPct = ((e.clientY - rect.top) / rect.height) * 100;
@@ -522,6 +535,7 @@
       updatePitchPieces();
       renderTacticalVectors();
       updateActiveTokenCard();
+      updatePlayHints();
     });
 
     var stopDrag = function (e) {
@@ -536,12 +550,16 @@
 
     el.addEventListener('pointerup', stopDrag);
     el.addEventListener('pointercancel', stopDrag);
+    el.addEventListener('click', function () {
+      if (!canReposition()) passToPlayer(playerObj);
+    });
 
     // Keyboard support: Enter / Space to select
     el.addEventListener('keydown', function(e) {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         selectPlayer(playerObj.id);
+        if (!canReposition()) passToPlayer(playerObj);
       }
     });
   }
@@ -551,37 +569,26 @@
     var svg = document.getElementById('vector-layer');
     if (!svg) return;
 
+    var active = matchBall.holderTeam === 'user' ? ballHolder() : null;
+    passPreview = active && !corner && matchSeconds < MATCH_LENGTH ? passOption(active) : null;
+    if (!passPreview || active.id !== selectedPlayerId) {
+      if (vectorMarkup) {
+        svg.replaceChildren();
+        vectorMarkup = '';
+      }
+      return;
+    }
+
     var html = '<defs>' +
       '<marker id="arrow-cyan" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">' +
       '<path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#05f0ff" />' +
-      '</marker>' +
-      '<marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">' +
-      '<path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#00ff85" />' +
       '</marker>' +
       '<marker id="arrow-pink" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">' +
       '<path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#ff2882" />' +
       '</marker>' +
       '</defs>';
 
-    var active = null;
-    for (var i = 0; i < userSquad.length; i++) {
-      if (userSquad[i].id === selectedPlayerId) { active = userSquad[i]; break; }
-    }
-
-    if (!active) {
-      svg.innerHTML = html;
-      return;
-    }
-
-    // 1. Pass target vector: Find nearest forward teammate using Radash sort
-    var teammates = userSquad.filter(function(p) { return p.id !== active.id; });
-    var sortedOptions = _R.sort(teammates, function(p) {
-      var dist = Math.hypot(p.x - active.x, p.y - active.y);
-      var forwardBonus = (p.x > active.x) ? -15 : 0;
-      return dist + forwardBonus;
-    });
-
-    var target = sortedOptions[0];
+    var target = passPreview.target;
     if (target) {
       html += '<line x1="' + active.x + '%" y1="' + active.y + '%" x2="' + target.x + '%" y2="' + target.y + '%" ' +
               'stroke="#05f0ff" stroke-width="2.5" stroke-dasharray="6,4" class="vector-dash" ' +
@@ -596,15 +603,18 @@
               'marker-end="url(#arrow-pink)" />';
     }
 
-    svg.innerHTML = html;
+    if (vectorMarkup !== html) {
+      svg.innerHTML = html;
+      vectorMarkup = html;
+    }
   }
 
   // SELECT ACTIVE PLAYER
   window.selectPlayer = function (id) {
+    if (selectedPlayerId === id) return;
     selectedPlayerId = id;
     updatePitchPieces();
     renderTacticalVectors();
-    renderRosterList();
     updateActiveTokenCard();
   };
 
@@ -616,15 +626,10 @@
     }
     if (!player) return;
 
-    var badge = document.getElementById('active-token-badge');
-    var nameEl = document.getElementById('active-player-name');
-    var roleEl = document.getElementById('active-player-role');
-    var coordsEl = document.getElementById('active-token-coords');
-
-    if (badge) badge.innerText = '#' + player.num;
-    if (nameEl) nameEl.innerText = player.name.toUpperCase();
-    if (roleEl) roleEl.innerText = player.role + ' (' + player.pos + ') // xG: ' + Number(player.xg).toFixed(2);
-    if (coordsEl) coordsEl.innerText = 'POS: ' + player.x + '%, ' + player.y + '%';
+    writeText('active-token-badge', '#' + player.num);
+    writeText('active-player-name', player.name.toUpperCase());
+    writeText('active-player-role', player.role + ' (' + player.pos + ') · xG ' + Number(player.xg).toFixed(2));
+    writeText('active-token-coords', 'Position ' + player.x.toFixed(1) + '%, ' + player.y.toFixed(1) + '%');
   }
 
   // RENDER ROSTER LIST IN LEFT PANEL
@@ -635,23 +640,17 @@
     var rows = [];
     for (var i = 0; i < userSquad.length; i++) {
       var p = userSquad[i];
-      var isSelected = (p.id === selectedPlayerId);
-      var isBallHolder = (matchBall.holderId === p.id && matchBall.holderTeam === 'user');
 
       rows.push(
-        '<div onclick="selectPlayer(' + p.id + ')" ' +
-             'role="button" tabindex="0" ' +
-             'aria-selected="' + (isSelected ? 'true' : 'false') + '" ' +
-             'class="p-2 flex items-center justify-between gap-2 cursor-pointer transition-colors focus-visible:ring-1 focus-visible:ring-pl-cyan ' +
-             (isSelected ? 'bg-[#3b0042] border-l-4 border-pl-cyan' : 'hover:bg-[#2e0034]') + '">' +
+        '<div id="roster-u-' + p.id + '" onclick="selectPlayer(' + p.id + ')" ' +
+             'role="button" tabindex="0" aria-pressed="false" ' +
+             'class="roster-row p-2 flex items-center justify-between gap-2 cursor-pointer transition-colors focus-visible:ring-1 focus-visible:ring-pl-cyan">' +
           '<div class="flex items-center gap-2 min-w-0">' +
-            '<span class="w-6 h-6 rounded-full bg-pl-purple border ' +
-              (isBallHolder ? 'border-pl-cyan text-pl-cyan font-black ring-2 ring-pl-cyan/50' : 'border-pl-green text-pl-green') +
-              ' font-mono text-[10px] flex items-center justify-center flex-none">' +
+            '<span class="roster-number w-6 h-6 rounded-full bg-pl-purple border font-mono text-[10px] flex items-center justify-center flex-none">' +
               p.num +
             '</span>' +
             '<div class="truncate">' +
-              '<input type="text" value="' + p.name + '" ' +
+              '<input type="text" value="' + escapeAttribute(p.name) + '" maxlength="32" ' +
                      'aria-label="Edit player ' + p.num + ' name" ' +
                      'onclick="event.stopPropagation()" ' +
                      'onchange="renamePlayer(' + p.id + ', this.value)" ' +
@@ -662,19 +661,41 @@
             '<span class="text-[9px] font-mono font-bold bg-[#17001b] text-pl-cyan border border-white/10 px-1 py-0.5">' +
               p.role +
             '</span>' +
-            (isBallHolder ? '<span class="text-[9px] font-mono text-pl-green font-bold bg-pl-green/10 border border-pl-green px-1">BALL</span>' : '') +
+            '<span class="roster-ball text-[9px] font-mono text-pl-green font-bold bg-pl-green/10 border border-pl-green px-1">BALL</span>' +
           '</div>' +
         '</div>'
       );
     }
     list.innerHTML = rows.join('');
+    rosterSelection = null;
+    rosterPossessor = null;
+    updateRosterStatus();
+  }
+
+  function updateRosterStatus() {
+    if (rosterSelection !== selectedPlayerId) {
+      document.getElementById('roster-u-' + rosterSelection)?.setAttribute('aria-pressed', 'false');
+      document.getElementById('roster-u-' + selectedPlayerId)?.setAttribute('aria-pressed', 'true');
+      rosterSelection = selectedPlayerId;
+    }
+    var possessor = matchBall.holderTeam === 'user' ? matchBall.holderId : null;
+    if (rosterPossessor !== possessor) {
+      document.getElementById('roster-u-' + rosterPossessor)?.removeAttribute('data-has-ball');
+      document.getElementById('roster-u-' + possessor)?.setAttribute('data-has-ball', '');
+      rosterPossessor = possessor;
+    }
+  }
+
+  function escapeAttribute(value) {
+    return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
   window.renamePlayer = function (id, newName) {
     for (var i = 0; i < userSquad.length; i++) {
       if (userSquad[i].id === id && newName && newName.trim()) {
-        userSquad[i].name = newName.trim();
-        updateActiveTokenCard();
+        userSquad[i].name = newName.trim().slice(0, 32);
+        userSquad[i].token.setAttribute('aria-label', userSquad[i].name + ' number ' + userSquad[i].num);
+        refreshPlay();
         logEvent('Renamed player #' + userSquad[i].num + ' to "' + userSquad[i].name + '".');
         break;
       }
@@ -695,8 +716,14 @@
       'Ollie Watkins', 'Son Heung-min', 'Bruno Guimaraes', 'Moises Caicedo'
     ];
     for (var i = 0; i < userSquad.length; i++) {
-      userSquad[i].name = superstars[i % superstars.length];
+      var pick = i + Math.floor(Math.random() * (superstars.length - i));
+      var name = superstars[pick];
+      superstars[pick] = superstars[i];
+      superstars[i] = name;
+      userSquad[i].name = name;
+      userSquad[i].token.setAttribute('aria-label', name + ' number ' + userSquad[i].num);
     }
+    updatePitchPieces();
     renderRosterList();
     updateActiveTokenCard();
     logEvent('Generated Premier League all-star lineup for YOU 11!');
@@ -704,21 +731,24 @@
 
   // CHANGE FORMATION
   window.changeFormation = function (fmtName) {
-    if (!FORMATION_TEMPLATES[fmtName]) return;
+    if (!Object.hasOwn(FORMATION_TEMPLATES, fmtName)) return;
     currentFormation = fmtName;
 
     var select = document.getElementById('formation-select');
     if (select) select.value = fmtName;
 
     var template = FORMATION_TEMPLATES[fmtName];
+    var reposition = canReposition();
     for (var i = 0; i < userSquad.length; i++) {
       var target = template.user[i];
       if (target) {
         userSquad[i].role = target.role;
         userSquad[i].base_x = target.x;
         userSquad[i].base_y = target.y;
-        userSquad[i].x = target.x;
-        userSquad[i].y = target.y;
+        if (reposition) {
+          userSquad[i].x = target.x;
+          userSquad[i].y = target.y;
+        }
       }
     }
 
@@ -728,36 +758,22 @@
         aiSquad[j].role = aTarget.role;
         aiSquad[j].base_x = aTarget.x;
         aiSquad[j].base_y = aTarget.y;
-        aiSquad[j].x = aTarget.x;
-        aiSquad[j].y = aTarget.y;
+        if (reposition) {
+          aiSquad[j].x = aTarget.x;
+          aiSquad[j].y = aTarget.y;
+        }
       }
     }
 
-    var holder = null;
-    if (matchBall.holderTeam === 'user') {
-      for (var h = 0; h < userSquad.length; h++) {
-        if (userSquad[h].id === matchBall.holderId) { holder = userSquad[h]; break; }
-      }
-    } else {
-      for (var ah = 0; ah < aiSquad.length; ah++) {
-        if (aiSquad[ah].id === matchBall.holderId) { holder = aiSquad[ah]; break; }
-      }
-    }
-
-    if (holder) {
-      matchBall.x = holder.x + (matchBall.holderTeam === 'user' ? 1.2 : -1.2);
-      matchBall.y = holder.y;
-    }
-
-    updatePitchPieces();
-    renderTacticalVectors();
+    if (reposition) makePossessor(ballHolder());
     renderRosterList();
-    updateActiveTokenCard();
+    refreshPlay();
     logEvent('Shifted team tactical shape to ' + fmtName + '.');
   };
 
   // RECENTER FORMATION
   window.recenterFormation = function () {
+    if (!canReposition()) return;
     for (var i = 0; i < userSquad.length; i++) {
       userSquad[i].x = userSquad[i].base_x;
       userSquad[i].y = userSquad[i].base_y;
@@ -767,170 +783,230 @@
       aiSquad[j].y = aiSquad[j].base_y;
     }
 
-    var holder = null;
-    if (matchBall.holderTeam === 'user') {
-      for (var h = 0; h < userSquad.length; h++) {
-        if (userSquad[h].id === matchBall.holderId) { holder = userSquad[h]; break; }
-      }
-    } else {
-      for (var ah = 0; ah < aiSquad.length; ah++) {
-        if (aiSquad[ah].id === matchBall.holderId) { holder = aiSquad[ah]; break; }
-      }
-    }
-
-    if (holder) {
-      matchBall.x = holder.x + (matchBall.holderTeam === 'user' ? 1.2 : -1.2);
-      matchBall.y = holder.y;
-    }
-
-    updatePitchPieces();
-    renderTacticalVectors();
+    makePossessor(ballHolder());
+    refreshPlay();
     logEvent('Formation shapes cleanly recentered to default tactical positions.');
   };
 
-  // PASS TO NEAREST TEAMMATE
-  window.passToNearestTeammate = function () {
-    var passer = null;
-    for (var i = 0; i < userSquad.length; i++) {
-      if (userSquad[i].id === selectedPlayerId) { passer = userSquad[i]; break; }
-    }
-    if (!passer) passer = userSquad[0];
-
-    var teammates = userSquad.filter(function(p) { return p.id !== passer.id; });
-    var sorted = _R.sort(teammates, function(p) {
-      var dist = Math.hypot(p.x - passer.x, p.y - passer.y);
-      return (p.x > passer.x) ? dist * 0.7 : dist * 1.4;
-    });
-
-    var target = sorted[0];
-    if (!target) return;
-
-    stats.userPassesTotal++;
-    playSound('kick');
-
-    // Interception calculation
-    var interceptor = null;
-    for (var j = 0; j < aiSquad.length; j++) {
-      var ai = aiSquad[j];
-      var dToPasser = Math.hypot(ai.x - passer.x, ai.y - passer.y);
-      var dToTarget = Math.hypot(ai.x - target.x, ai.y - target.y);
-      var passLen = Math.hypot(target.x - passer.x, target.y - passer.y);
-      if ((dToPasser + dToTarget - passLen < 2.5) && (ai.x > passer.x - 2 && ai.x < target.x + 2)) {
-        interceptor = ai;
-        break;
-      }
-    }
-
-    if (interceptor && Math.random() < 0.45) {
-      matchBall.holderId = interceptor.id;
-      matchBall.holderTeam = 'ai';
-      matchBall.x = interceptor.x - 1.2;
-      matchBall.y = interceptor.y;
-      logEvent('[INTERCEPTED] #' + interceptor.num + ' ' + interceptor.name + ' intercepted the pass! AI turnover.');
-    } else {
-      stats.userPassesCompleted++;
-      matchBall.holderId = target.id;
-      matchBall.holderTeam = 'user';
-      matchBall.x = target.x + 1.2;
-      matchBall.y = target.y;
-      selectPlayer(target.id);
-      var distMeters = Math.round(Math.hypot(target.x - passer.x, target.y - passer.y) * 0.9);
-      logEvent('[PASS] #' + passer.num + ' ' + passer.name + ' -> #' + target.num + ' ' + target.name + ' (' + distMeters + 'm).');
-    }
-
+  function refreshPlay() {
     updatePitchPieces();
     renderTacticalVectors();
+    updateActiveTokenCard();
     updateTelemetryStats();
+    updatePlayHints();
+  }
+
+  function canReposition() {
+    return matchMode === 'match' && !isRunning && matchSeconds === 0 && lastManualAction < 0;
+  }
+
+  function manualPossessor() {
+    if (corner || matchSeconds >= MATCH_LENGTH) return null;
+    if (matchBall.holderTeam !== 'user') {
+      logEvent('Win possession with Press before attacking.');
+      return null;
+    }
+    return canIssueCommand() ? ballHolder() : null;
+  }
+
+  function canIssueCommand() {
+    if (lastManualAction === matchSeconds) return false;
+    lastManualAction = matchSeconds;
+    return true;
+  }
+
+  function finishManualMove() {
+    if (!isRunning && document.getElementById('advance-after-move').checked) simulationTick();
+    else refreshPlay();
+  }
+
+  function playPass(passer, target) {
+    var team = passer.team;
+    if (!target) {
+      var option = passPreview || passOption(passer);
+      if (!option) return;
+      target = option.target;
+    }
+    stats[team + 'PassesTotal']++;
+    playSound('kick');
+    var interceptor = decisionModel.laneDefender(opposingSquad(passer), passer, target);
+    var caught = interceptor && Math.random() < decisionModel.interceptionRisk(passer, target, interceptor);
+    if (caught) {
+      makePossessor(interceptor);
+      stats[interceptor.team + 'Recoveries']++;
+      logEvent('[INTERCEPTED] ' + interceptor.name + ' wins possession.');
+    } else {
+      stats[team + 'PassesCompleted']++;
+      makePossessor(target);
+      previousPasser = passer.id;
+      if (team === 'user') logEvent('[PASS] ' + passer.name + ' to ' + target.name + '.');
+    }
+    if (matchBall.holderTeam === 'user') selectPlayer(matchBall.holderId);
+  }
+
+  window.passToNearestTeammate = function () {
+    var holder = manualPossessor();
+    if (holder) {
+      playPass(holder);
+      finishManualMove();
+    }
   };
 
-  // TRIGGER SHOT ON GOAL
-  window.triggerShot = function () {
-    var shooter = null;
-    for (var i = 0; i < userSquad.length; i++) {
-      if (userSquad[i].id === selectedPlayerId) { shooter = userSquad[i]; break; }
+  function passToPlayer(target) {
+    if (matchBall.holderTeam !== 'user' || target === ballHolder()) return;
+    var holder = manualPossessor();
+    if (holder) {
+      playPass(holder, target);
+      finishManualMove();
     }
-    if (!shooter) shooter = userSquad[9] || userSquad[0];
+  }
 
-    stats.userShotsTotal++;
+  function shotChance(shooter) {
+    return decisionModel.shotChance(shooter, opposingSquad(shooter), shooter.team === 'user' ? 1 : -1);
+  }
+
+  function awardCorner(team, top) {
+    var home = team === 'user';
+    var squad = home ? userSquad : aiSquad;
+    var opponents = home ? aiSquad : userSquad;
+    function x(value) { return home ? value : 100 - value; }
+    function y(value) { return top ? value : 100 - value; }
+    var kicker = squad[top ? 8 : 10];
+    var near = squad[9];
+    var far = squad[top ? 10 : 8];
+    var short = squad[7];
+    Object.assign(kicker, { x: x(96.5), y: y(3.5) });
+    Object.assign(near, { x: x(88), y: y(43) });
+    Object.assign(far, { x: x(86), y: y(61) });
+    Object.assign(short, { x: x(89), y: y(17) });
+    Object.assign(opponents[0], { x: x(95), y: 50 });
+    for (var i = 1; i <= 4; i++) {
+      Object.assign(opponents[i], { x: x(i % 2 ? 91 : 83), y: y(30 + i * 9) });
+    }
+    corner = { near: near, far: far, short: short };
+    makePossessor(kicker);
+    matchBall.x = kicker.x;
+    if (home) selectPlayer(kicker.id);
+    else opponentReadout = 'The opponent has a corner.';
+    logEvent(home ? '[CORNER] Your team to take.' : '[CORNER] The opponent to take.');
+  }
+
+  function deliverCorner(delivery) {
+    var kicker = ballHolder();
+    var target = corner[delivery];
+    var home = kicker.team === 'user';
+    corner = null;
+    if (delivery === 'short') {
+      logEvent('[CORNER] Played short.');
+      playPass(kicker, target);
+      return;
+    }
+    var post = delivery === 'near' ? 'near post' : 'far post';
+    if (!home) opponentReadout = 'Delivered the corner to the ' + post + '.';
+    logEvent('[CORNER] Cross to the ' + post + '.');
+    var blockers = opposingSquad(kicker).filter(function (player) {
+      return player.role !== 'GK' && Math.hypot(player.x - target.x, player.y - target.y) < 9;
+    });
+    if (blockers.length && Math.random() < 0.29 + Math.min(blockers.length, 3) * 0.12) {
+      makePossessor(blockers[0]);
+      if (!home) selectPlayer(blockers[0].id);
+      stats[blockers[0].team + 'Recoveries']++;
+      logEvent('[CLEARANCE] ' + blockers[0].name + ' reaches the cross first.');
+    } else {
+      takeShot(target);
+    }
+  }
+
+  window.takeCorner = function (delivery) {
+    if (!corner || matchBall.holderTeam !== 'user' || matchSeconds >= MATCH_LENGTH ||
+        !Object.hasOwn(corner, delivery) || !canIssueCommand()) return;
+    deliverCorner(delivery);
+    finishManualMove();
+  };
+
+  function takeShot(shooter) {
+    var team = shooter.team;
+    var isUser = team === 'user';
+    var goalX = isUser ? 97.5 : 2.5;
+    var keeper = (isUser ? aiSquad : userSquad)[0];
+    var distance = Math.hypot((goalX - shooter.x) * 1.05, (50 - shooter.y) * 0.68);
+    var shotXg = shotChance(shooter);
+    stats[team + 'ShotsTotal']++;
+    stats[team + 'XgTotal'] += shotXg;
     playSound('shot');
 
-    var dist = Math.hypot(97.5 - shooter.x, 50 - shooter.y);
-    var angleDev = Math.abs(50 - shooter.y);
-    var shotXg = Math.max(0.04, Math.min(0.85, (100 - dist * 1.4 - angleDev * 0.9) / 100));
-    stats.userXgTotal += shotXg;
-
-    var aiGk = null;
-    for (var j = 0; j < aiSquad.length; j++) {
-      if (aiSquad[j].role === 'GK') { aiGk = aiSquad[j]; break; }
-    }
-    if (!aiGk) aiGk = aiSquad[0];
-
-    var isTarget = Math.random() > (0.15 + dist * 0.005);
-
-    if (isTarget) {
-      stats.userShotsOnTarget++;
-      var saveChance = Math.max(0.2, 0.9 - shotXg);
-      if (Math.random() > saveChance) {
-        userScore++;
-        playSound('goal');
-        logEvent('[GOAL!] #' + shooter.num + ' ' + shooter.name + ' SCORES! xG: ' + shotXg.toFixed(2));
-        updateScoreboard();
-        resetBallToCenter('ai');
-      } else {
-        matchBall.holderId = aiGk.id;
-        matchBall.holderTeam = 'ai';
-        matchBall.x = aiGk.x - 1.2;
-        matchBall.y = aiGk.y;
-        logEvent('[SAVED] Fantastic save by AI keeper #' + aiGk.num + ' ' + aiGk.name + '!');
-      }
+    var outcome = decisionModel.shotOutcome(Math.random(), shotXg, distance, Math.random());
+    if (outcome !== 'goal-kick') stats[team + 'ShotsOnTarget']++;
+    if (outcome === 'goal') {
+      if (isUser) userScore++;
+      else aiScore++;
+      playSound('goal');
+      logEvent('[GOAL] ' + shooter.name + ' scores (' + shotXg.toFixed(2) + ' xG).');
+      updateScoreboard();
+      resetBallToCenter(isUser ? 'ai' : 'user');
+    } else if (outcome === 'corner') {
+      logEvent('[SAVE] ' + keeper.name + ' pushes the shot behind.');
+      awardCorner(team, shooter.y < 50);
     } else {
-      matchBall.holderId = aiGk.id;
-      matchBall.holderTeam = 'ai';
-      matchBall.x = aiGk.x - 1.2;
-      matchBall.y = aiGk.y;
-      logEvent('[WIDE] Shot by #' + shooter.num + ' flies wide of the post.');
+      if (outcome === 'goal-kick') Object.assign(keeper, { x: isUser ? 94 : 6, y: shooter.y < 50 ? 42 : 58 });
+      makePossessor(keeper);
+      if (keeper.team === 'user') selectPlayer(keeper.id);
+      logEvent(outcome === 'save' ? '[SAVE] ' + keeper.name + ' stops ' + shooter.name + '’s shot.' :
+        '[GOAL KICK] ' + shooter.name + ' shoots wide.');
     }
+  }
 
-    updatePitchPieces();
-    renderTacticalVectors();
-    updateTelemetryStats();
+  window.triggerShot = function () {
+    var holder = manualPossessor();
+    if (holder) {
+      takeShot(holder);
+      finishManualMove();
+    }
   };
 
-  // EXECUTE ACTION DISPATCHER
+  function moveCarrier(player, dx, dy) {
+    player.x = clamp(player.x + dx, 3, 97);
+    player.y = clamp(player.y + dy, 6, 94);
+    makePossessor(player);
+  }
+
+  function dribbleTo(dx, dy) {
+    var distance = Math.hypot(dx, dy);
+    if (distance < 0.1) return;
+    var holder = manualPossessor();
+    if (!holder) return;
+    var step = Math.min(8, distance) / distance;
+    moveCarrier(holder, dx * step, dy * step);
+    finishManualMove();
+  }
+
   window.executeAction = function (type) {
     if (type === 'PASS') {
       passToNearestTeammate();
     } else if (type === 'SHOOT') {
       triggerShot();
     } else if (type === 'DRIBBLE') {
-      var active = null;
-      for (var i = 0; i < userSquad.length; i++) {
-        if (userSquad[i].id === selectedPlayerId) { active = userSquad[i]; break; }
-      }
-      if (active) {
-        active.x = Math.min(94, active.x + 5);
-        if (matchBall.holderId === active.id && matchBall.holderTeam === 'user') {
-          matchBall.x = active.x + 1.2;
+      dribbleTo(8, 0);
+    } else if (!corner && (type === 'PRESS' || type === 'BLOCK') && matchSeconds < MATCH_LENGTH) {
+      if (matchBall.holderTeam === 'ai' && canIssueCommand()) {
+        if (type === 'BLOCK') {
+          coverGoal(ballHolder());
+        } else if (!pressureBall(userSquad, ballHolder(), 0.44, 0.62, 43)) {
+          logEvent('[PRESS] Closed down the ball. The opponent keeps possession.');
         }
-        updatePitchPieces();
-        renderTacticalVectors();
-        updateActiveTokenCard();
-        logEvent('[DRIBBLE] #' + active.num + ' ' + active.name + ' drives into attacking space.');
+        finishManualMove();
+      } else if (matchBall.holderTeam === 'user') {
+        logEvent('You already have possession.');
       }
-    } else if (type === 'PRESS') {
-      for (var j = 0; j < userSquad.length; j++) {
-        if (userSquad[j].role !== 'GK') {
-          userSquad[j].x = Math.min(88, userSquad[j].x + 4);
-        }
-      }
-      updatePitchPieces();
-      renderTacticalVectors();
-      logEvent('[TACTIC] Team stepping up into aggressive high press.');
     }
   };
 
   // NUDGE SELECTED PLAYER (Keyboard Navigation)
   function nudgeSelectedPlayer(dx, dy) {
+    if (!canReposition()) {
+      if (matchBall.holderTeam === 'user') dribbleTo(dx * 4, dy * 4);
+      return;
+    }
     var active = null;
     for (var i = 0; i < userSquad.length; i++) {
       if (userSquad[i].id === selectedPlayerId) { active = userSquad[i]; break; }
@@ -948,10 +1024,12 @@
     updatePitchPieces();
     renderTacticalVectors();
     updateActiveTokenCard();
+    updatePlayHints();
   }
 
   // SET AI OPPONENT TACTIC MINDSET
   window.setAIStyle = function (style) {
+    if (!Object.hasOwn(tactics, style)) return;
     aiStyle = style;
     var btnBalanced = document.getElementById('ai-style-balanced');
     var btnPress = document.getElementById('ai-style-press');
@@ -978,256 +1056,326 @@
     }
 
     if (indicator) indicator.innerText = style;
-    logEvent('AI tactical mindset adjusted to: ' + style + '.');
+    logEvent('Opponent tactic set to ' + style.toLowerCase() + '.');
   };
 
-  // SIMULATION TICK
+  window.setAIDifficulty = function (level) {
+    if (!Object.hasOwn(difficulty, level)) return;
+    var select = document.getElementById('ai-difficulty');
+    if (select.disabled) {
+      select.value = aiDifficulty;
+      return;
+    }
+    aiDifficulty = level;
+    select.value = level;
+    if (matchSeconds < MATCH_LENGTH) showChallengeBest();
+    logEvent('Opponent difficulty set to ' + level + '.');
+  };
+
+  function pressureBall(defenders, holder, pace, chance, range) {
+    var closest;
+    var best = Infinity;
+    defenders.forEach(function(player) {
+      if (player.role === 'GK') return;
+      var distance = Math.hypot(holder.x - player.x, holder.y - player.y);
+      if (distance < best) {
+        closest = player;
+        best = distance;
+      }
+    });
+    if (!closest || best > range) return false;
+    closest.x += (holder.x - closest.x) * pace;
+    closest.y += (holder.y - closest.y) * pace;
+    if (best * (1 - pace) > 4 || Math.random() >= chance) return false;
+    makePossessor(closest);
+    stats[closest.team + 'Recoveries']++;
+    if (closest.team === 'user') selectPlayer(closest.id);
+    logEvent('[TACKLE] ' + closest.name + ' wins the ball.');
+    return true;
+  }
+
+  function coverGoal(holder) {
+    var x = clamp(holder.x * 0.74 + 2.5 * 0.26, 6, 77);
+    var y = holder.y * 0.74 + 50 * 0.26;
+    var closest;
+    var best = Infinity;
+    userSquad.forEach(function (player) {
+      if (player.role === 'GK') return;
+      var distance = Math.hypot(x - player.x, y - player.y);
+      if (distance < best) {
+        best = distance;
+        closest = player;
+      }
+    });
+    if (!closest) return;
+    var step = Math.min(1, 18 / Math.max(1, best));
+    closest.x += (x - closest.x) * step;
+    closest.y += (y - closest.y) * step;
+    selectPlayer(closest.id);
+    logEvent('[BLOCK] ' + closest.name + ' moves into the shooting lane.');
+  }
+
+  function updateTeamShape(players, holder, attacking, line) {
+    var direction = players[0].team === 'user' ? 1 : -1;
+    players.forEach(function(player) {
+      if (player === holder) return;
+      var keeper = player.role === 'GK';
+      var pressShift = attacking ? 5 : line;
+      var targetX = keeper ? player.base_x : player.base_x + (holder.x - 50) * 0.24 + direction * pressShift;
+      var targetY = keeper ? 50 + (holder.y - 50) * 0.22 : player.base_y + (holder.y - 50) * (attacking ? 0.1 : 0.27);
+      player.x += (clamp(targetX, 4, 96) - player.x) * (attacking ? 0.18 : 0.11);
+      player.y += (clamp(targetY, 6, 94) - player.y) * 0.18;
+    });
+  }
+
+  function automaticAttack(holder, plan, skill) {
+    var userHasBall = holder.team === 'user';
+    var lead = userHasBall ? userScore - aiScore : aiScore - userScore;
+    var late = matchSeconds >= 75 * 60;
+    var action = decisionModel.chooseAction(holder, userHasBall ? userSquad : aiSquad, opposingSquad(holder), plan, skill, {
+      chasing: late && lead < 0,
+      protecting: late && lead > 0,
+      tempo: modes[matchMode].tempo || 1,
+      previousHolder: previousPasser
+    }, Math.random);
+    if (action.kind === 'shoot') {
+      if (!userHasBall) opponentReadout = 'Took a shot with a ' + Math.round(action.chance * 100) + '% scoring chance.';
+      takeShot(holder);
+    } else if (action.kind === 'pass') {
+      if (!userHasBall) opponentReadout = action.advance > 7 ? 'Played a forward pass to ' + action.target.name + '.' :
+        'Passed to ' + action.target.name + ' to keep the ball.';
+      playPass(holder, action.target);
+    } else {
+      if (!userHasBall) opponentReadout = 'Carried the ball toward open space.';
+      moveCarrier(holder, action.x - holder.x, action.y - holder.y);
+    }
+  }
+
+  function updatePlayHints() {
+    var holder = ballHolder();
+    var userHasBall = holder.team === 'user';
+    var fullTime = matchSeconds >= MATCH_LENGTH;
+    var actionTaken = lastManualAction === matchSeconds;
+    var mode = modes[matchMode];
+    var hint;
+    if (fullTime) {
+      hint = 'Full time. Choose Replay to go again.';
+    } else if (actionTaken) {
+      hint = isRunning ? 'Action taken. Waiting for the next play.' : 'Action taken. Choose Next play or press N.';
+    } else if (corner) {
+      hint = userHasBall ? 'Choose a near-post cross, a far-post cross, or play short.' :
+        'Opponent corner. Use Next play to see how it’s delivered.';
+    } else if (canReposition()) {
+      hint = 'Drag players to set up, then Start or use Next play.';
+    } else if (userHasBall) {
+      hint = passPreview ? 'Suggested pass to #' + passPreview.target.num + ' ' + passPreview.target.name +
+        (passPreview.blocker ? ' · Marked lane. Try a dribble or a different pass.' : ' · Tap a teammate or tap grass to dribble.') :
+        'Tap a teammate to pass or tap grass to dribble.';
+    } else {
+      hint = 'Press to try a tackle, or Block to cover the shooting lane.';
+    }
+    var chance = userHasBall ? 'Shot chance ' + Math.round(shotChance(holder) * 100) + '%' : 'Opponent has the ball';
+    writeText('play-hint', hint);
+    writeText('shot-chance', fullTime ? 'Full time' : corner ? 'Corner kick' : chance);
+    writeText('ai-decision', opponentReadout);
+    attackButtons.forEach(function (button) { button.disabled = fullTime || actionTaken || !!corner || !userHasBall; });
+    defendButtons.forEach(function (button) { button.disabled = fullTime || actionTaken || !!corner || userHasBall; });
+    document.getElementById('corner-controls').hidden = fullTime || actionTaken || !corner || !userHasBall;
+    document.getElementById('recenter-formation').hidden = !canReposition();
+    document.getElementById('ai-difficulty').disabled = !!mode.challenge && !fullTime &&
+      (isRunning || matchSeconds > mode.minute * 60 || lastManualAction >= 0);
+  }
+
+  function openPlay(manualMove) {
+    var holder = ballHolder();
+    var userHasBall = holder.team === 'user';
+    stats[holder.team + 'PossessionTicks']++;
+    var autoPlay = document.getElementById('autoplay').checked;
+    var plan = tactics[aiStyle];
+    var skill = difficulty[aiDifficulty];
+    var chasing = matchSeconds >= 75 * 60 && aiScore < userScore;
+    updateTeamShape(userSquad, holder, userHasBall, 0);
+    updateTeamShape(aiSquad, holder, !userHasBall, plan.line + (chasing ? 5 : 0));
+    if (userHasBall) {
+      opponentReadout = aiStyle === 'COUNTER' ? 'Dropping back to close passing lanes.' :
+        aiStyle === 'HIGH PRESS' ? 'Pressing the ball carrier.' : 'Holding shape and closing space.';
+    }
+    var won = userHasBall
+      ? pressureBall(aiSquad, holder, plan.chase * skill.press, plan.tackle * skill.press, plan.range + (chasing ? 5 : 0))
+      : !manualMove && pressureBall(userSquad, holder, autoPlay ? 0.26 : 0.14, autoPlay ? 0.32 : 0.18, autoPlay ? 30 : 22);
+    if (won && userHasBall) opponentReadout = 'Won the ball with a tackle.';
+    if (!won && (!userHasBall || (autoPlay && !manualMove))) {
+      automaticAttack(holder, userHasBall ? tactics.BALANCED : plan, userHasBall ? difficulty.pro : skill);
+    }
+  }
+
   function simulationTick() {
-    matchSeconds += 2;
+    if (matchSeconds >= MATCH_LENGTH) return;
+    var manualMove = lastManualAction === matchSeconds;
+    if (!corner) openPlay(manualMove);
+    else if (!manualMove) {
+      var delivery = matchBall.holderTeam === 'ai' && aiStyle === 'COUNTER' ? 'short' :
+        (Math.random() < 0.5 ? 'near' : 'far');
+      deliverCorner(delivery);
+    }
+
+    var previousTime = matchSeconds;
+    matchSeconds = Math.min(MATCH_LENGTH, matchSeconds + modes[matchMode].seconds);
+    if (previousTime < 45 * 60 && matchSeconds >= 45 * 60) {
+      resetBallToCenter('ai');
+      logEvent('Half time. The opponent starts the second half.');
+    }
+    if (matchSeconds >= MATCH_LENGTH) finishMatch();
     updateClock();
-
-    if (matchBall.holderTeam === 'user') {
-      stats.userPossessionTicks++;
-    } else {
-      stats.aiPossessionTicks++;
-    }
-
-    if (matchBall.holderTeam === 'user') {
-      var holder = null;
-      for (var i = 0; i < userSquad.length; i++) {
-        if (userSquad[i].id === matchBall.holderId) { holder = userSquad[i]; break; }
-      }
-      if (holder) {
-        var pressSpeed = (aiStyle === 'HIGH PRESS') ? 1.4 : 0.8;
-        for (var j = 0; j < aiSquad.length; j++) {
-          var ai = aiSquad[j];
-          if (ai.role === 'GK') continue;
-          var distToBall = Math.hypot(holder.x - ai.x, holder.y - ai.y);
-          if (distToBall < 25) {
-            ai.x += (holder.x - ai.x) * 0.06 * pressSpeed;
-            ai.y += (holder.y - ai.y) * 0.06 * pressSpeed;
-          }
-        }
-
-        if (Math.random() < 0.28) {
-          if (holder.x > 75 && Math.random() < 0.45) {
-            triggerShot();
-          } else {
-            passToNearestTeammate();
-          }
-        } else {
-          holder.x = Math.min(92, holder.x + 0.6);
-          matchBall.x = holder.x + 1.2;
-        }
-      }
-    } else {
-      var aiHolder = null;
-      for (var k = 0; k < aiSquad.length; k++) {
-        if (aiSquad[k].id === matchBall.holderId) { aiHolder = aiSquad[k]; break; }
-      }
-      if (!aiHolder) aiHolder = aiSquad[9];
-
-      if (aiHolder) {
-        for (var u = 0; u < userSquad.length; u++) {
-          var userP = userSquad[u];
-          if (userP.role === 'GK') continue;
-          var uDist = Math.hypot(aiHolder.x - userP.x, aiHolder.y - userP.y);
-          if (uDist < 22) {
-            userP.x += (aiHolder.x - userP.x) * 0.05;
-            userP.y += (aiHolder.y - userP.y) * 0.05;
-          }
-        }
-
-        if (aiHolder.x < 30 && Math.random() < 0.4) {
-          stats.aiShotsTotal++;
-          playSound('shot');
-          var distToUserGoal = Math.hypot(aiHolder.x - 2.5, aiHolder.y - 50);
-          var aiXg = Math.max(0.05, Math.min(0.8, (100 - distToUserGoal * 1.5) / 100));
-          stats.aiXgTotal += aiXg;
-
-          var userGk = userSquad[0];
-          if (Math.random() > 0.65) {
-            aiScore++;
-            playSound('whistle');
-            logEvent('[GOAL CONCEDED] AI striker #' + aiHolder.num + ' ' + aiHolder.name + ' scores past our keeper!');
-            updateScoreboard();
-            resetBallToCenter('user');
-          } else {
-            matchBall.holderId = userGk.id;
-            matchBall.holderTeam = 'user';
-            matchBall.x = userGk.x + 1.2;
-            matchBall.y = userGk.y;
-            selectPlayer(userGk.id);
-            logEvent('[SAVE] Superb save by #' + userGk.num + ' ' + userGk.name + ' denying AI!');
-          }
-        } else {
-          var aiTeammates = aiSquad.filter(function(p) { return p.id !== aiHolder.id; });
-          var aiTarget = _R.sort(aiTeammates, function(p) { return Math.hypot(p.x - aiHolder.x, p.y - aiHolder.y); })[0];
-
-          if (aiTarget && Math.random() < 0.35) {
-            stats.aiPassesTotal++;
-            playSound('kick');
-
-            var userInterceptor = null;
-            for (var ui = 0; ui < userSquad.length; ui++) {
-              if (Math.hypot(userSquad[ui].x - aiTarget.x, userSquad[ui].y - aiTarget.y) < 6) {
-                userInterceptor = userSquad[ui];
-                break;
-              }
-            }
-
-            if (userInterceptor && Math.random() < 0.4) {
-              matchBall.holderId = userInterceptor.id;
-              matchBall.holderTeam = 'user';
-              matchBall.x = userInterceptor.x + 1.2;
-              matchBall.y = userInterceptor.y;
-              selectPlayer(userInterceptor.id);
-              logEvent('[TACKLE] #' + userInterceptor.num + ' ' + userInterceptor.name + ' dispossesses AI opponent!');
-            } else {
-              stats.aiPassesCompleted++;
-              matchBall.holderId = aiTarget.id;
-              matchBall.holderTeam = 'ai';
-              matchBall.x = aiTarget.x - 1.2;
-              matchBall.y = aiTarget.y;
-            }
-          } else {
-            aiHolder.x = Math.max(8, aiHolder.x - 0.7);
-            matchBall.x = aiHolder.x - 1.2;
-          }
-        }
-      }
-    }
-
-    updatePitchPieces();
-    renderTacticalVectors();
-    updateTelemetryStats();
+    refreshPlay();
   }
 
   function resetBallToCenter(restartingTeam) {
-    for (var i = 0; i < userSquad.length; i++) {
-      userSquad[i].x = userSquad[i].base_x;
-      userSquad[i].y = userSquad[i].base_y;
-    }
-    for (var j = 0; j < aiSquad.length; j++) {
-      aiSquad[j].x = aiSquad[j].base_x;
-      aiSquad[j].y = aiSquad[j].base_y;
-    }
-
-    matchBall.x = 50;
-    matchBall.y = 50;
-    matchBall.holderTeam = restartingTeam;
-
-    if (restartingTeam === 'user') {
-      var rUser = userSquad[9] || userSquad[0];
-      matchBall.holderId = rUser.id;
-      selectPlayer(rUser.id);
-    } else {
-      var rAi = aiSquad[9] || aiSquad[0];
-      matchBall.holderId = rAi.id;
-    }
+    corner = null;
+    previousPasser = null;
+    userSquad.concat(aiSquad).forEach(function(player) {
+      player.x = player.base_x;
+      player.y = player.base_y;
+    });
+    var squad = restartingTeam === 'user' ? userSquad : aiSquad;
+    var kicker = squad[9];
+    kicker.x = restartingTeam === 'user' ? 48 : 52;
+    kicker.y = 50;
+    makePossessor(kicker);
+    if (restartingTeam === 'user') selectPlayer(kicker.id);
   }
 
-  // SIMULATION CONTROLS
-  window.toggleSimulation = function () {
-    isRunning = !isRunning;
+  function startTimer() {
+    clearInterval(simInterval);
+    var autoPlay = document.getElementById('autoplay').checked;
+    if (isRunning) simInterval = setInterval(simulationTick, (autoPlay ? 850 : 1550) / simSpeed);
+  }
+
+  function updateMatchButton() {
     var btn = document.getElementById('sim-toggle-btn');
     var text = document.getElementById('sim-btn-text');
     var icon = document.getElementById('sim-play-icon');
+    var action = matchSeconds >= MATCH_LENGTH ? 'Replay' : (isRunning ? 'Pause' : 'Start');
+    text.textContent = action;
+    btn.setAttribute('aria-label', action + ' match simulation');
+    btn.classList.toggle('is-running', isRunning);
+    var stepDisabled = isRunning || matchSeconds >= MATCH_LENGTH;
+    var seconds = modes[matchMode].seconds;
+    var stepLength = seconds === 30 ? '30 seconds' : (seconds === 60 ? '1 minute' : '3 minutes');
+    ['next-play-toolbar', 'next-play-pitch'].forEach(function (id) {
+      var step = document.getElementById(id);
+      step.disabled = stepDisabled;
+      step.title = 'Advance ' + stepLength + ' (N)';
+    });
+    icon.innerHTML = isRunning
+      ? '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>'
+      : '<polygon points="5 3 19 12 5 21 5 3"/>';
+  }
 
-    if (isRunning) {
-      getAudioContext();
-      clearInterval(simInterval);
-      simInterval = setInterval(simulationTick, 800 / simSpeed);
-      if (btn) {
-        btn.className = 'bg-pl-magenta hover:bg-[#ff4293] text-white font-display font-black text-xs px-3 py-1.5 uppercase tracking-wider flex items-center gap-1.5 border border-white shadow transition-colors';
-        btn.setAttribute('aria-label', 'Pause match simulation');
-      }
-      if (text) text.innerText = 'PAUSE';
-      if (icon) icon.innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
-      logEvent('Simulation dynamic match engine resumed.');
-    } else {
-      clearInterval(simInterval);
-      if (btn) {
-        btn.className = 'bg-pl-green hover:bg-[#1cfda0] text-pl-purple font-display font-black text-xs px-3 py-1.5 uppercase tracking-wider flex items-center gap-1.5 border border-white shadow transition-colors';
-        btn.setAttribute('aria-label', 'Start match simulation');
-      }
-      if (text) text.innerText = 'START';
-      if (icon) icon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
-      logEvent('Simulation paused by manager.');
-    }
+  window.toggleSimulation = function () {
+    if (matchSeconds >= MATCH_LENGTH) resetMatch();
+    isRunning = !isRunning;
+    if (isRunning && soundEnabled) getAudioContext();
+    startTimer();
+    updateMatchButton();
+    updatePlayHints();
   };
 
   window.stepSimulation = function () {
-    simulationTick();
+    if (!isRunning) simulationTick();
   };
 
   window.toggleSpeed = function () {
-    simSpeed = (simSpeed === 1) ? 2 : (simSpeed === 2 ? 4 : 1);
+    simSpeed = simSpeed === 1 ? 2 : (simSpeed === 2 ? 4 : 1);
     var speedBtn = document.getElementById('speed-btn');
-    if (speedBtn) {
-      speedBtn.innerText = simSpeed + 'X';
-      speedBtn.setAttribute('aria-label', 'Simulation speed ' + simSpeed + ' times');
-    }
-
-    if (isRunning) {
-      clearInterval(simInterval);
-      simInterval = setInterval(simulationTick, 800 / simSpeed);
-    }
-    logEvent('Simulation engine speed set to ' + simSpeed + 'X.');
+    speedBtn.textContent = simSpeed + 'X';
+    speedBtn.setAttribute('aria-label', 'Simulation speed ' + simSpeed + ' times');
+    startTimer();
   };
+
+  window.toggleSound = function () {
+    soundEnabled = !soundEnabled;
+    document.getElementById('sound-toggle').setAttribute('aria-pressed', String(soundEnabled));
+    if (soundEnabled) getAudioContext();
+  };
+
+  window.chooseMatchMode = function (mode) {
+    if (!Object.hasOwn(modes, mode)) return;
+    matchMode = mode;
+    document.getElementById('autoplay').checked = false;
+    document.getElementById('advance-after-move').checked = !!modes[mode].afterMove;
+    resetMatch();
+  };
+
+  function bestResultKey() {
+    return 'tactical-11-best-' + matchMode + (aiDifficulty === 'pro' ? '' : '-' + aiDifficulty);
+  }
+
+  function challengeBest() {
+    try {
+      return localStorage.getItem(bestResultKey());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function showChallengeBest() {
+    var best = modes[matchMode].challenge ? challengeBest() : null;
+    document.getElementById('match-result').textContent = best ? 'Best finish: ' + best.split(':')[1] : '';
+  }
 
   window.resetMatch = function () {
-    clearInterval(simInterval);
+    var mode = modes[matchMode];
     isRunning = false;
-    matchSeconds = 0;
-    userScore = 0;
-    aiScore = 0;
-    stats.userPossessionTicks = 50;
-    stats.aiPossessionTicks = 50;
-    stats.userPassesCompleted = 0;
-    stats.userPassesTotal = 0;
-    stats.userShotsTotal = 0;
-    stats.userShotsOnTarget = 0;
-    stats.userXgTotal = 0.00;
-    stats.aiPassesCompleted = 0;
-    stats.aiPassesTotal = 0;
-    stats.aiShotsTotal = 0;
-    stats.aiShotsOnTarget = 0;
-    stats.aiXgTotal = 0.00;
-
-    var btn = document.getElementById('sim-toggle-btn');
-    var text = document.getElementById('sim-btn-text');
-    var icon = document.getElementById('sim-play-icon');
-    if (btn) {
-      btn.className = 'bg-pl-green hover:bg-[#1cfda0] text-pl-purple font-display font-black text-xs px-3 py-1.5 uppercase tracking-wider flex items-center gap-1.5 border border-white shadow transition-colors';
-      btn.setAttribute('aria-label', 'Start match simulation');
+    startTimer();
+    matchSeconds = mode.minute * 60;
+    lastManualAction = -1;
+    opponentReadout = mode.challenge ? 'Ready for the next play.' : 'Ready for kickoff.';
+    userScore = mode.score[0];
+    aiScore = mode.score[1];
+    stats = emptyMatchStats();
+    clearEventLog();
+    resetBallToCenter(mode.team);
+    if (matchMode === 'corner') awardCorner('user', true);
+    if (mode.startAt) {
+      var holder = ballHolder();
+      moveCarrier(holder, mode.startAt.x - holder.x, mode.startAt.y - holder.y);
     }
-    if (text) text.innerText = 'START';
-    if (icon) icon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
-
-    initSquads();
+    renderRosterList();
     updateClock();
-    logEvent('Match reset. Ready for kickoff.');
+    updateScoreboard();
+    updateMatchButton();
+    refreshPlay();
+    document.getElementById('match-objective').textContent = mode.objective;
+    showChallengeBest();
+    logEvent('Ready to play.');
   };
+
+  function finishMatch() {
+    isRunning = false;
+    startTimer();
+    updateMatchButton();
+    playSound('whistle');
+    var outcome = userScore === aiScore ? 'Draw' : (userScore > aiScore ? 'Win' : 'Loss');
+    var score = userScore + '–' + aiScore;
+    var message = 'Full time · ' + score + ' · ' + outcome;
+    if (modes[matchMode].challenge) {
+      var margin = userScore - aiScore;
+      var best = challengeBest();
+      if (!best || margin > Number(best.split(':')[0])) {
+        try { localStorage.setItem(bestResultKey(), margin + ':' + score); } catch (_) {}
+      }
+      message += margin > 0 ? ' · Challenge complete!' : ' · Challenge missed';
+    }
+    document.getElementById('match-result').textContent = message;
+    logEvent(message);
+  }
 
   function updateClock() {
     var mins = Math.floor(matchSeconds / 60);
     var secs = matchSeconds % 60;
-    var clockEl = document.getElementById('match-clock');
-    var halfBadge = document.getElementById('half-badge');
-
-    var mStr = (mins < 10 ? '0' : '') + mins;
-    var sStr = (secs < 10 ? '0' : '') + secs;
-
-    if (clockEl) clockEl.innerText = mStr + ':' + sStr;
-    if (halfBadge) halfBadge.innerText = (mins < 45) ? '1ST H' : '2ND H';
-
-    if (mins >= 90) {
-      clearInterval(simInterval);
-      isRunning = false;
-      playSound('whistle');
-      logEvent('FULL TIME WHISTLE! Final Score: ' + userScore + ' - ' + aiScore);
-    }
+    writeText('match-clock', (mins < 10 ? '0' : '') + mins + ':' + (secs < 10 ? '0' : '') + secs);
+    writeText('half-badge', mins >= 90 ? 'FT' : (mins < 45 ? '1ST H' : '2ND H'));
   }
 
   function updateScoreboard() {
@@ -1239,42 +1387,29 @@
 
   function updateTelemetryStats() {
     var totalTicks = stats.userPossessionTicks + stats.aiPossessionTicks;
-    var userPct = Math.round((stats.userPossessionTicks / Math.max(1, totalTicks)) * 100);
+    var userPct = totalTicks ? Math.round(stats.userPossessionTicks / totalTicks * 100) : 50;
     var aiPct = 100 - userPct;
 
-    var valU = document.getElementById('possession-val-user');
-    var valA = document.getElementById('possession-val-ai');
     var barU = document.getElementById('bar-possession-user');
     var barA = document.getElementById('bar-possession-ai');
 
-    if (valU) valU.innerText = userPct + '%';
-    if (valA) valA.innerText = aiPct + '%';
-    if (barU) {
+    writeText('possession-val-user', userPct + '%');
+    writeText('possession-val-ai', aiPct + '%');
+    if (barU.style.width !== userPct + '%') {
       barU.style.width = userPct + '%';
-      barU.setAttribute('aria-valuenow', userPct);
-    }
-    if (barA) {
       barA.style.width = aiPct + '%';
-      barA.setAttribute('aria-valuenow', aiPct);
+      document.getElementById('possession-progress').setAttribute('aria-valuenow', userPct);
     }
 
-    var passAccEl = document.getElementById('stat-pass-acc');
-    if (passAccEl) {
-      var acc = stats.userPassesTotal > 0
+    var acc = stats.userPassesTotal > 0
         ? Math.round((stats.userPassesCompleted / stats.userPassesTotal) * 100)
-        : 90;
-      passAccEl.innerText = acc + '%';
-    }
-
-    var shotsEl = document.getElementById('stat-shots');
-    if (shotsEl) {
-      shotsEl.innerText = stats.userShotsTotal + ' (' + stats.userShotsOnTarget + ')';
-    }
-
-    var xgEl = document.getElementById('stat-xg');
-    if (xgEl) {
-      xgEl.innerText = stats.userXgTotal.toFixed(2);
-    }
+        : null;
+    writeText('stat-pass-acc', acc === null ? '—' : acc + '%');
+    writeText('stat-shots', stats.userShotsTotal + ' (' + stats.userShotsOnTarget + ')');
+    writeText('stat-xg', stats.userXgTotal.toFixed(2));
+    writeText('opponent-stats',
+      'AI: ' + stats.aiShotsTotal + ' shots (' + stats.aiShotsOnTarget + ' on target) · ' + stats.aiXgTotal.toFixed(2) + ' xG' +
+      ' · ' + stats.aiPassesCompleted + ' passes · ' + stats.aiRecoveries + ' recoveries');
   }
 
   // EVENT LOGGING
@@ -1296,9 +1431,10 @@
     else if (msg.indexOf('CONCEDED') !== -1 || msg.indexOf('INTERCEPTED') !== -1) color = 'text-pl-magenta';
 
     div.innerHTML = '<span class="text-white/40 font-mono text-[9px] flex-none">[' + timeStr + ']</span>' +
-                    '<span class="' + color + '">' + msg + '</span>';
-
+                    '<span class="' + color + '"></span>';
+    div.lastChild.textContent = msg;
     feed.prepend(div);
+    if (feed.childElementCount > 40) feed.lastElementChild.remove();
   };
 
   window.clearEventLog = function () {
@@ -1328,58 +1464,51 @@
       tabCustomBtn.className = 'py-2.5 text-xs font-display font-black uppercase tracking-wider border-b-2 border-transparent text-white/50 hover:text-white bg-[#19001d] flex items-center justify-center gap-1.5';
       tabCustomBtn.setAttribute('aria-selected', 'false');
       clubContent.classList.remove('hidden');
+      loadPremierLeagueClubs();
       customContent.classList.add('hidden');
     }
   };
 
   // LOAD PREMIER LEAGUE CLUBS DATASET
   function loadPremierLeagueClubs() {
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', '../static/data/players_2025_2026.json', true);
-    xhr.onload = function() {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          rawPlayersData = JSON.parse(xhr.responseText);
-          buildOfficialClubsList(rawPlayersData);
-        } catch (e) {
-          buildOfficialClubsList([]);
-        }
-      } else {
-        buildOfficialClubsList([]);
-      }
-    };
-    xhr.onerror = function() {
-      buildOfficialClubsList([]);
-    };
-    xhr.send();
+    if (clubRequest) return;
+    var container = document.getElementById('club-presets-container');
+    container.textContent = 'Loading squads…';
+    clubRequest = fetch('/api/players/2025').then(function(response) {
+      if (!response.ok) throw new Error('Squads unavailable');
+      return response.json();
+    }).then(function(players) {
+      clubRosters = new Map();
+      players.forEach(function (player) {
+        if (!clubRosters.has(player.club)) clubRosters.set(player.club, []);
+        clubRosters.get(player.club).push(player);
+      });
+      buildOfficialClubsList();
+    }).catch(function() {
+      clubRequest = null;
+      container.textContent = 'Squads could not load. ';
+      var retry = document.createElement('button');
+      retry.textContent = 'Retry';
+      retry.className = 'underline';
+      retry.onclick = loadPremierLeagueClubs;
+      container.appendChild(retry);
+    });
   }
 
-  function buildOfficialClubsList(players) {
+  function buildOfficialClubsList() {
     var container = document.getElementById('club-presets-container');
-    if (!container) return;
-
-    if (!players || players.length === 0) {
-      container.innerHTML = '<div class="p-2.5 bg-[#2b0031] border border-pl-border flex items-center justify-between">' +
-        '<div>' +
-          '<div class="font-display font-black text-xs text-white">MANCHESTER CITY</div>' +
-          '<div class="text-[9px] font-mono text-white/50">STAR: ERLING HAALAND</div>' +
-        '</div>' +
-        '<button onclick="applyOfficialClub(\'Manchester City\', \'user\')" class="bg-[#1b001f] text-pl-green border border-pl-green text-[10px] font-mono px-2 py-1 font-bold">LOAD</button>' +
-      '</div>';
-      return;
-    }
-
-    var clubGroups = _R.group(players, function(p) { return p.club; });
     var topClubs = [
       'Arsenal', 'Manchester City', 'Liverpool', 'Chelsea',
-      'Aston Villa', 'Tottenham', 'Newcastle', 'Manchester United'
+      'Aston Villa', 'Tottenham Hotspur', 'Newcastle United', 'Manchester United'
     ];
 
     var cards = [];
     for (var i = 0; i < topClubs.length; i++) {
       var clubName = topClubs[i];
-      var roster = clubGroups[clubName] || [];
-      var topStar = _R.sort(roster, function(p) { return (p.goals || 0) + (p.assists || 0); }, true)[0] || { name: 'Squad Star', position: 'FW' };
+      var roster = clubRosters.get(clubName) || [];
+      var topStar = roster.reduce(function (best, player) {
+        return (player.goals || 0) + (player.assists || 0) > (best.goals || 0) + (best.assists || 0) ? player : best;
+      }, roster[0] || { name: 'Squad Star', position: 'FW' });
       var accSum = 0;
       for (var a = 0; a < roster.length; a++) accSum += (roster[a].pass_accuracy || 85);
       var avgAcc = roster.length > 0 ? Math.round(accSum / roster.length) : 86;
@@ -1412,16 +1541,22 @@
   }
 
   window.applyOfficialClub = function (clubName, targetTeam) {
-    var clubGroups = _R.group(rawPlayersData, function(p) { return p.club; });
-    var roster = clubGroups[clubName] || [];
+    if (targetTeam !== 'user' && targetTeam !== 'ai') return;
+    var roster = clubRosters.get(clubName) || [];
 
     if (roster.length === 0) return;
 
-    var sortedSquad = _R.sort(roster, function(p) {
-      if (p.position === 'GK') return 0;
-      if (p.position === 'DF') return 1;
-      if (p.position === 'MF') return 2;
-      return 3;
+    var positions = {
+      GK: 'GK', RB: 'DF', RCB: 'DF', CB: 'DF', LCB: 'DF', LB: 'DF', RWB: 'DF', LWB: 'DF',
+      DM: 'MF', RDM: 'MF', LDM: 'MF', CM: 'MF', RCM: 'MF', LCM: 'MF', AM: 'MF', RM: 'MF', LM: 'MF',
+      RW: 'FW', LW: 'FW', ST: 'FW', RS: 'FW', LS: 'FW'
+    };
+    var available = roster.slice().sort(function (a, b) { return b.minutes - a.minutes; });
+    var slots = FORMATION_TEMPLATES[currentFormation][targetTeam];
+    var sortedSquad = slots.map(function(slot) {
+      var index = available.findIndex(function(player) { return player.position === positions[slot.role]; });
+      if (index === -1) index = available.findIndex(function(player) { return player.position !== 'GK'; });
+      return index === -1 ? null : available.splice(index, 1)[0];
     });
 
     if (targetTeam === 'user') {
@@ -1430,37 +1565,48 @@
       if (customInput) customInput.value = clubName.toUpperCase();
       if (scoreName) scoreName.innerText = clubName.toUpperCase();
 
-      initSquads(sortedSquad, null);
+      initSquads(sortedSquad, aiSquad);
       switchLeftTab('custom');
-      logEvent('Loaded official squad ' + clubName + ' into YOU 11.');
+      resetMatch();
+      logEvent('Loaded squad ' + clubName + ' into YOU 11.');
     } else {
       var scoreAiName = document.getElementById('scoreboard-ai-name');
       if (scoreAiName) scoreAiName.innerText = clubName.toUpperCase() + ' (AI)';
 
-      initSquads(null, sortedSquad);
-      logEvent('Set AI opponent to official squad ' + clubName + '.');
+      initSquads(userSquad, sortedSquad);
+      resetMatch();
+      logEvent('Set AI opponent to squad ' + clubName + '.');
     }
   };
 
   // MOUSE COORDINATES TRACKER & CLICK TO MOVE
   function setupPitchCoords() {
-    var pitch = document.getElementById('pitch-container');
+    var pitch = document.getElementById('pieces-layer');
     var coordsBadge = document.getElementById('mouse-coords');
     if (!pitch || !coordsBadge) return;
 
-    // Use throttled mousemove from Radash
-    pitch.addEventListener('mousemove', _R.throttle(function (e) {
+    var lastPointerUpdate = -Infinity;
+    pitch.addEventListener('mousemove', function (e) {
+      if (e.timeStamp - lastPointerUpdate < 50) return;
+      lastPointerUpdate = e.timeStamp;
       var rect = pitch.getBoundingClientRect();
       var xPct = Math.round(((e.clientX - rect.left) / rect.width) * 100);
       var yPct = Math.round(((e.clientY - rect.top) / rect.height) * 100);
-      coordsBadge.innerText = 'X: ' + xPct + '% | Y: ' + yPct + '%';
-    }, 50));
+      writeText('mouse-coords', 'X: ' + xPct + '% | Y: ' + yPct + '%');
+    });
 
     pitch.addEventListener('click', function (e) {
-      if (e.target && e.target.closest && e.target.closest('.checker-token')) return;
+      if (e.target.closest('.checker-token')) return;
       var rect = pitch.getBoundingClientRect();
       var xPct = Math.round(((e.clientX - rect.left) / rect.width) * 100);
       var yPct = Math.round(((e.clientY - rect.top) / rect.height) * 100);
+      if (!canReposition()) {
+        if (matchBall.holderTeam === 'user') {
+          var holder = ballHolder();
+          dribbleTo(xPct - holder.x, yPct - holder.y);
+        }
+        return;
+      }
 
       var active = null;
       for (var i = 0; i < userSquad.length; i++) {
@@ -1477,6 +1623,7 @@
         updatePitchPieces();
         renderTacticalVectors();
         updateActiveTokenCard();
+        updatePlayHints();
         logEvent('Relocated #' + active.num + ' ' + active.name + ' to (' + active.x + '%, ' + active.y + '%).');
       }
     });
@@ -1486,12 +1633,19 @@
   function setupKeyboardControls() {
     window.addEventListener('keydown', function(e) {
       // Ignore if user is typing in an input
-      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA')) {
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.repeat ||
+          (e.target.closest && e.target.closest('input, select, textarea, [contenteditable]'))) {
         return;
       }
 
       var key = e.key;
+      if ((key === 'Enter' || key === ' ') && e.target.matches('.roster-row')) {
+        e.preventDefault();
+        e.target.click();
+        return;
+      }
       if (key === ' ' || key === 'Spacebar') {
+        if (e.target.closest && e.target.closest('button, a, [role="button"]')) return;
         e.preventDefault();
         window.toggleSimulation();
       } else if (key === 'ArrowUp') {
@@ -1512,6 +1666,12 @@
         window.triggerShot();
       } else if (key === 'd' || key === 'D') {
         window.executeAction('DRIBBLE');
+      } else if (key === 't' || key === 'T') {
+        window.executeAction('PRESS');
+      } else if (key === 'b' || key === 'B') {
+        window.executeAction('BLOCK');
+      } else if (key === 'n' || key === 'N') {
+        window.stepSimulation();
       } else if (key === 'r' || key === 'R') {
         window.recenterFormation();
       } else if (key === '1') {
@@ -1528,12 +1688,21 @@
 
   // BOOTSTRAP APPLICATION
   window.addEventListener('DOMContentLoaded', function () {
+    attackButtons = document.querySelectorAll('[data-possession-action="attack"]');
+    defendButtons = document.querySelectorAll('[data-possession-action="defend"]');
+    watchPitchSize();
     initSquads();
     setupPitchCoords();
     setupKeyboardControls();
-    loadPremierLeagueClubs();
-    logEvent('Premier League Tactical 11 Engine online.');
-    logEvent('4-3-3 Attack formation deployed. Interactive checker board ready.');
+    resetMatch();
+    document.getElementById('autoplay').addEventListener('change', startTimer);
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden && isRunning) {
+        isRunning = false;
+        startTimer();
+        updateMatchButton();
+      }
+    });
   });
 
 })();

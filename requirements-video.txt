@@ -1,0 +1,3 @@
+# Optional local inference backend. Standard site routes work without these.
+ultralytics>=8.4,<9
+lap>=0.5.12,<1

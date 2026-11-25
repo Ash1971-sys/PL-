@@ -17,5 +17,9 @@
     "radash"
   ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "tailwindcss": "3.4.17",
+    "terser": "5.48.0"
+  }
 }

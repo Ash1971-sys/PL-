@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- PAGE_METADATA -->
+  <link rel="stylesheet" href="/static/css/site.css">
+  <link rel="stylesheet" href="/static/css/tactical_studio.css">
+</head>
+<body class="studio-body">
+  <!-- SITE_HEADER -->
+  <main id="main-content" class="studio" tabindex="-1">
+    <header class="studio-heading">
+      <h1>Video Analysis</h1>
+      <p>Track a match clip and replay it on a 105 × 68 m tactical pitch.</p>
+    </header>
+    <div class="studio-layout">
+      <section class="studio-pane" aria-labelledby="analysis-video-heading">
+        <h2 id="analysis-video-heading">Footage</h2>
+        <label id="video-drop" for="analysis-upload">Drop a clip or browse <small>MP4, WebM, MKV</small></label>
+        <input id="analysis-upload" class="sr-only" type="file" accept=".mp4,.webm,.mkv">
+        <button id="analysis-sample" type="button">Load sample clip</button>
+        <div class="studio-video">
+          <video id="analysis-video" controls playsinline preload="metadata" aria-label="Match video"></video>
+          <canvas id="analysis-calibration" aria-label="Select four pitch landmarks in the video" hidden></canvas>
+        </div>
+        <div class="studio-row">
+          <label for="analysis-speed">Speed</label>
+          <select id="analysis-speed">
+            <option value=".25">0.25×</option><option value=".5">0.5×</option><option value=".75">0.75×</option>
+            <option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option>
+          </select>
+          <button id="analysis-play" type="button" disabled>Play</button>
+          <output id="analysis-clock" for="analysis-seek">0:00 / 0:00</output>
+        </div>
+        <div class="studio-timeline">
+          <input id="analysis-seek" type="range" min="0" max="1" step=".05" value="0" aria-label="Playback time" disabled>
+          <div id="analysis-pins" class="studio-pins" aria-label="Events on the timeline"></div>
+        </div>
+        <details class="studio-setup" id="analysis-setup">
+          <summary>Pitch calibration</summary>
+          <p>Pause on a wide shot. Mark the pitch corners clockwise from far left. Recalibrate after camera cuts or large changes in angle.</p>
+          <div class="studio-row">
+            <button id="analysis-mark" type="button" disabled>Mark corners</button>
+            <button id="analysis-overhead" type="button" disabled>Use full-frame overhead</button>
+            <button id="analysis-reset" type="button" disabled>Clear points</button>
+          </div>
+          <p id="analysis-landmarks" aria-live="polite"></p>
+          <label>Home attacks <select id="analysis-direction"><option value="right">Right</option><option value="left">Left</option></select></label>
+        </details>
+        <button id="analysis-run" class="studio-primary" type="button" disabled>Analyze uploaded clip</button>
+        <p id="analysis-status" role="status">Load the sample to try playback and match reports.</p>
+      </section>
+
+      <section class="studio-pane studio-pitch-pane" aria-labelledby="analysis-pitch-heading">
+        <div class="studio-title-row"><h2 id="analysis-pitch-heading">2D tactical replay</h2><span id="analysis-source">Waiting for a clip</span></div>
+        <canvas id="analysis-pitch" width="1050" height="680" aria-label="Tracked players and ball on a top-down pitch"></canvas>
+        <div class="studio-legend"><span class="studio-home">Home</span><span class="studio-away">Away</span><span>Grey · Unassigned</span><span>White · Ball</span></div>
+        <div class="studio-row studio-layers" role="group" aria-label="Pitch overlays">
+          <label><input type="checkbox" data-layer="lanes" checked> Passing lanes</label>
+          <label><input type="checkbox" data-layer="trails"> Sprint trails</label>
+          <label><input type="checkbox" data-layer="heatmap"> Heatmap</label>
+          <label><input type="checkbox" data-layer="lines"> Defensive lines</label>
+        </div>
+        <label>Inspect track <select id="analysis-player"><option value="">All players</option></select></label>
+        <p id="analysis-inspect">Select a checker to inspect a track.</p>
+      </section>
+
+      <section class="studio-pane" aria-labelledby="analysis-report-heading">
+        <h2 id="analysis-report-heading">Match report</h2>
+        <div class="studio-row">
+          <label>Range <select id="analysis-range"><option value="full">Full Match</option><option value="current">Up to Current Time</option></select></label>
+          <label>Scope <select id="analysis-scope"><option value="team">Team</option><option value="player">Selected Player</option></select></label>
+          <label>Side <select id="analysis-team"><option value="home">Home</option><option value="away">Away</option></select></label>
+        </div>
+        <p id="analysis-coverage">Load telemetry to see estimates.</p>
+        <table class="studio-report"><thead><tr><th scope="col">Metric</th><th scope="col">Value</th></tr></thead><tbody id="analysis-metrics"></tbody></table>
+        <div class="studio-row">
+          <button id="analysis-next" type="button" disabled>Next Clip</button>
+          <button id="analysis-json" type="button" disabled>Export JSON</button>
+          <button id="analysis-csv" type="button" disabled>Export CSV</button>
+        </div>
+        <p id="analysis-event" aria-live="polite"></p>
+        <details class="studio-setup">
+          <summary>How to read the numbers</summary>
+          <p>Ball control and events are trajectory estimates. Foul and goal markers are review cues. xG and PPDA are simple proxies. The 5-minute forecast extrapolates recent tracked possession and needs 15 seconds of observed control.</p>
+        </details>
+      </section>
+    </div>
+  </main>
+  <script src="/static/js/radash.min.js" defer></script>
+  <script src="/static/js/pitch_engine_2d.js" defer></script>
+  <script src="/static/js/match_analytics.js" defer></script>
+  <script src="/static/js/video_telemetry.js" defer></script>
+</body>
+</html>

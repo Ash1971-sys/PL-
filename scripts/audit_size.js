@@ -1,85 +1,40 @@
-const fs = require('fs');
-const path = require('path');
+/** Audit the assets included by the public pages. */
+const { readFileSync, existsSync, statSync } = require('node:fs');
+const path = require('node:path');
+const { gzipSync } = require('node:zlib');
 
-const ROOT_DIR = path.resolve(__dirname, '..');
-const MAX_BUDGET_BYTES = 300 * 1024; // 300 KB
+const root = path.resolve(__dirname, '..');
+const shell = ['static/css/site.css', 'static/premier-league-brand.svg'];
+const reports = ['templates/analysis.html', ...shell];
+const portal = [...shell, 'static/js/radash.min.js', 'static/js/charts.js', 'static/js/app.js'];
+const routes = {
+  '/': ['templates/index.html', ...portal, 'static/js/chat.js'],
+  '/players': ['templates/players.html', ...portal],
+  '/simulator': ['templates/simulator.html', ...shell, 'static/css/simulator.css', 'static/js/tactical-ai.js', 'static/js/simulator.js'],
+  '/coach-board': ['templates/coach-board.html', ...shell, 'static/css/coach-board.css', 'static/js/coach-board.js'],
+  '/video-analysis': ['templates/video_analysis.html', ...shell, 'static/css/tactical_studio.css', 'static/js/radash.min.js',
+    'static/js/pitch_engine_2d.js', 'static/js/match_analytics.js', 'static/js/video_telemetry.js'],
+  '/live, /predictions': [...reports, 'static/js/league-hub.js'],
+  '/standings, /trends, /clubs, /methodology': reports
+};
 
-const assetPaths = [
-  'templates/index.html',
-  'templates/players.html',
-  'templates/simulator.html',
-  'static/css/main.css',
-  'static/css/simulator.css',
-  'static/js/radash.min.js',
-  'static/js/charts.js',
-  'static/js/app.js',
-  'static/js/simulator.js'
-];
-
-console.log('='.repeat(80));
-console.log('  PREMIER LEAGUE ANALYTICS // ASSET SIZE & TREEMAP AUDIT');
-console.log('  Target Budget: < 300.00 KB');
-console.log('='.repeat(80));
-
-let totalBytes = 0;
-const results = [];
-
-for (const relPath of assetPaths) {
-  const fullPath = path.join(ROOT_DIR, relPath);
-  if (!fs.existsSync(fullPath)) {
-    console.error(`[MISSING] File not found: ${relPath}`);
-    process.exit(1);
-  }
-  const stats = fs.statSync(fullPath);
-  totalBytes += stats.size;
-  results.push({
-    path: relPath,
-    category: relPath.startsWith('templates/') ? 'HTML Template' : relPath.endsWith('.css') ? 'CSS Stylesheet' : 'JavaScript',
-    bytes: stats.size,
-    kb: (stats.size / 1024).toFixed(2)
-  });
+const assets = new Map();
+for (const file of new Set(Object.values(routes).flat())) {
+  const source = path.join(root, file);
+  const compiled = path.join(root, 'static/dist', path.basename(file));
+  const current = file.startsWith('static/js/') && !file.endsWith('.min.js') && existsSync(compiled) &&
+    statSync(compiled).mtimeMs >= statSync(source).mtimeMs;
+  const bytes = readFileSync(current ? compiled : source);
+  assets.set(file, { raw: bytes.length, gzip: gzipSync(bytes, { level: 6 }).length });
 }
 
-// Display Treemap Breakdown by Category
-const categories = {};
-for (const item of results) {
-  categories[item.category] = (categories[item.category] || 0) + item.bytes;
+const kb = bytes => (bytes / 1024).toFixed(2) + ' KiB';
+for (const [route, files] of Object.entries(routes)) {
+  const sizes = files.map(file => assets.get(file));
+  const raw = sizes.reduce((total, size) => total + size.raw, 0);
+  const gzip = sizes.reduce((total, size) => total + size.gzip, 0);
+  console.log(route.padEnd(45) + kb(raw) + ' raw / ' + kb(gzip) + ' gzip');
 }
-
-console.log('\n[1] ASSET INVENTORY:');
-console.log('-'.repeat(80));
-console.log(`${'Path'.padEnd(38)} | ${'Category'.padEnd(14)} | ${'Size (Bytes)'.padStart(12)} | ${'Size (KB)'.padStart(10)}`);
-console.log('-'.repeat(80));
-
-for (const r of results) {
-  console.log(`${r.path.padEnd(38)} | ${r.category.padEnd(14)} | ${r.bytes.toString().padStart(12)} | ${(r.kb + ' KB').padStart(10)}`);
-}
-
-console.log('-'.repeat(80));
-console.log('\n[2] CATEGORY TREEMAP BREAKDOWN:');
-console.log('-'.repeat(80));
-
-for (const [cat, bytes] of Object.entries(categories)) {
-  const pct = ((bytes / totalBytes) * 100).toFixed(1);
-  const barLen = Math.round((bytes / totalBytes) * 40);
-  const bar = '█'.repeat(barLen) + '░'.repeat(40 - barLen);
-  console.log(`${cat.padEnd(16)} | ${(bytes / 1024).toFixed(2).padStart(8)} KB (${pct.padStart(5)}%) | [${bar}]`);
-}
-
-console.log('-'.repeat(80));
-const totalKb = (totalBytes / 1024).toFixed(2);
-const headroomKb = ((MAX_BUDGET_BYTES - totalBytes) / 1024).toFixed(2);
-const budgetUsagePct = ((totalBytes / MAX_BUDGET_BYTES) * 100).toFixed(1);
-
-console.log(`\nTOTAL PAYLOAD : ${totalBytes} bytes (${totalKb} KB)`);
-console.log(`BUDGET LIMIT  : ${MAX_BUDGET_BYTES} bytes (300.00 KB)`);
-console.log(`USAGE         : ${budgetUsagePct}%`);
-console.log(`HEADROOM      : ${headroomKb} KB under budget`);
-
-if (totalBytes <= MAX_BUDGET_BYTES) {
-  console.log('\n>>> AUDIT RESULT: PASSED (Under 300 KB budget)\n');
-  process.exit(0);
-} else {
-  console.error(`\n>>> AUDIT RESULT: FAILED! Exceeded budget by ${Math.abs(headroomKb)} KB\n`);
-  process.exit(1);
-}
+const rawTotal = [...assets.values()].reduce((total, size) => total + size.raw, 0);
+console.log('Unique frontend assets: ' + kb(rawTotal) + ' / 300 KiB (data responses audited separately)');
+if (rawTotal > 300 * 1024) process.exitCode = 1;

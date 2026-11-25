@@ -50,6 +50,7 @@
 /* 3D Circular Checker Token with top-down bevel effect */
 .checker-token {
   position: absolute;
+  inset: 0 auto auto 0;
   width: 36px;
   height: 36px;
   transform: translate(-50%, -50%);
@@ -87,26 +88,18 @@
   background: radial-gradient(circle at 35% 35%, #4a0052, #210025);
   border: 2.5px solid #ff2882;
   color: #ff2882;
+  cursor: default;
 }
 
-/* Active Selection cyan pulsing ring */
 .selected-ring {
+  z-index: 50;
   box-shadow: 0 0 0 3px #05f0ff, 0 0 16px rgba(5, 240, 255, 0.9), inset 0 0 6px #05f0ff;
-  animation: pulse-ring 1.8s infinite alternate;
-}
-
-@keyframes pulse-ring {
-  0% {
-    box-shadow: 0 0 0 2px #05f0ff, 0 0 10px rgba(5, 240, 255, 0.7);
-  }
-  100% {
-    box-shadow: 0 0 0 4px #05f0ff, 0 0 22px rgba(5, 240, 255, 1);
-  }
 }
 
 /* Match Ball 3D disc & glow */
 .ball-token {
   position: absolute;
+  inset: 0 auto auto 0;
   width: 18px;
   height: 18px;
   transform: translate(-50%, -50%);
@@ -115,38 +108,17 @@
   border: 2px solid #111111;
   z-index: 35;
   pointer-events: none;
-  transition: left 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94), top 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition: translate 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   box-shadow: 0 0 0 2px #ffffff, 0 0 10px rgba(255, 255, 255, 0.9);
 }
 
-.ball-pulse {
-  animation: ball-glint 1.2s ease-in-out infinite alternate;
-}
-
-@keyframes ball-glint {
-  0% {
-    filter: drop-shadow(0 0 2px #00ff85);
-  }
-  100% {
-    filter: drop-shadow(0 0 8px #05f0ff);
-  }
-}
-
-/* Vector Trajectory animated dash */
 .vector-dash {
   stroke-dasharray: 6, 4;
-  animation: dash 1s linear infinite;
-}
-
-@keyframes dash {
-  to {
-    stroke-dashoffset: -20;
-  }
 }
 
 /* Tactical Pitch Container Cursor */
 #pitch-container {
-  touch-action: none;
+  touch-action: pan-y;
 }
 
 
@@ -160,10 +132,40 @@ a:focus-visible,
   outline-offset: 2px;
 }
 
-/* GPU Accelerated transforms for tokens and vector lines */
-.checker-token,
-.ball-token {
-  will-change: left, top, transform;
-  transform: translate3d(-50%, -50%, 0);
-  backface-visibility: hidden;
+.game-toolbar { background: #210025; border-bottom: 1px solid #4a0b52; }
+.game-toolbar [role="region"] { max-width: 100%; min-width: 0; flex-wrap: wrap; gap: .65rem; }
+.game-toolbar #scoreboard-user-name, .game-toolbar #scoreboard-ai-name { overflow-wrap: anywhere; }
+.game-toolbar #sim-toggle-btn.is-running { background: #ff2882; color: #210025; }
+.game-workspace { align-items: start; }
+.game-arena { order: -1; align-self: start; min-width: 0; width: 100%; }
+.game-pitch { height: clamp(17rem, 46vw, 34rem); }
+.roster-row:hover { background: #2e0034; }
+.roster-row[aria-pressed="true"] { background: #3b0042; border-left: 4px solid #05f0ff; }
+.roster-number { border-color: #00ff85; color: #00ff85; }
+.roster-row[data-has-ball] .roster-number { border-color: #05f0ff; color: #05f0ff; font-weight: 900; }
+.roster-row:not([data-has-ball]) .roster-ball { display: none; }
+.game-challenge { width: 100%; margin-bottom: .75rem; color: #eee2f3; }
+.game-options { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; }
+.game-options label { display: flex; align-items: center; gap: .35rem; }
+.game-options select, .game-options button { padding: .35rem .5rem; background: #29002e; border: 1px solid #88508e; color: white; }
+.game-options [aria-pressed="true"] { border-color: #00ff85; color: #00ff85; }
+.game-options input { accent-color: #00ff85; }
+.game-options select:disabled, .next-play:disabled, [data-possession-action]:disabled {
+  opacity: .48;
+  pointer-events: none;
+}
+.game-arena [aria-label="Tactical Action Dock"] button { min-height: 2.65rem; }
+#match-objective, #match-result, .game-tip { margin-top: .4rem; font-size: .875rem; }
+.game-tip { color: #c8afcb; }
+#match-result { color: #00ff85; font-weight: 750; }
+#match-result:empty { display: none; }
+@media (min-width: 72rem) {
+  .game-workspace { grid-template-columns: minmax(15rem, 19rem) minmax(0, 1fr) minmax(16rem, 19rem); }
+  .game-arena { order: 0; }
+}
+@media (max-width: 35rem) {
+  .checker-token { width: 1.6rem; height: 1.6rem; }
+  .checker-token span:first-child { font-size: .625rem; }
+  .checker-token span:last-child { display: none; }
+  .ball-token { width: .65rem; height: .65rem; }
 }

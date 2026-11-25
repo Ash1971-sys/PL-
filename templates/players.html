@@ -3,211 +3,32 @@
 <head>
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-  <meta content="web_standard" name="shell-type"/>
-  <meta name="description" content="Premier League Analytics // Player Performance & Telemetry Hub 2024/25 & 2025/26 covering 994 players, xG, xA, pass accuracy, and tactical pitch zones."/>
-  <meta name="theme-color" content="#37003c"/>
-  <title>Premier League Analytics // Player Stats Hub 2025 & 2026</title>
-  
-  <!-- Font & Icon preconnects -->
-  <link href="https://fonts.googleapis.com" rel="preconnect"/>
-  <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
-  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
-  
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-  <script id="tailwind-config">
-    tailwind.config = {
-      darkMode: "class",
-      theme: {
-        extend: {
-          colors: {
-            "pl-purple": "#37003c",
-            "pl-purple-dark": "#240028",
-            "pl-purple-deep": "#1a001d",
-            "pl-green": "#00ff85",
-            "pl-pink": "#ff2882",
-            "pl-cyan": "#05f0ff",
-            "pl-gray-neutral": "#d1d1d6",
-            "surface-dim": "#dbd9e1",
-            "surface-container-low": "#f4f2fb",
-            "surface-container": "#efedf5",
-            "surface-container-high": "#e9e7ef",
-            "surface-container-highest": "#e3e1ea",
-            "surface-container-lowest": "#ffffff",
-            "primary": "#37003c",
-            "on-primary": "#ffffff",
-            "secondary-container": "#00ff85",
-            "tertiary-container": "#ff2882",
-            "outline-variant": "#d2c2cd",
-            "on-surface": "#1a1b21",
-            "on-surface-variant": "#4f434d"
-          },
-          fontFamily: {
-            "sans": ["Space Grotesk", "sans-serif"],
-            "mono": ["JetBrains Mono", "monospace"],
-            "display": ["Space Grotesk", "sans-serif"]
-          },
-          borderRadius: {
-            "none": "0px",
-            "sm": "0px",
-            "DEFAULT": "0px",
-            "md": "0px",
-            "lg": "0px",
-            "xl": "0px",
-            "2xl": "0px",
-            "full": "0px"
-          }
-        }
-      }
-    };
-  </script>
-  
-  <style>
-    *, *::before, *::after {
-      border-radius: 0px !important;
-    }
-    body {
-      overscroll-behavior: none;
-      background-color: #f4f2fb;
-      font-family: 'Space Grotesk', sans-serif;
-    }
-    ::-webkit-scrollbar {
-      display: none;
-    }
-
-    /* Broadcast Ticker */
-    @keyframes tickerScroll {
-      0% { transform: translateX(0); }
-      100% { transform: translateX(-50%); }
-    }
-    .ticker-track {
-      display: flex;
-      width: 200%;
-      animation: tickerScroll 34s linear infinite;
-    }
-    .ticker-track:hover {
-      animation-play-state: paused;
-    }
-
-    /* Position Badges */
-    .badge-pos {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 10px;
-      font-weight: 800;
-      padding: 1px 6px;
-      text-transform: uppercase;
-    }
-    .badge-pos.fw { background-color: rgba(255, 40, 130, 0.15); color: #ff2882; border: 1px solid #ff2882; }
-    .badge-pos.mf { background-color: rgba(0, 255, 133, 0.15); color: #00aa55; border: 1px solid #00ff85; }
-    .badge-pos.df { background-color: rgba(5, 240, 255, 0.15); color: #0088aa; border: 1px solid #05f0ff; }
-    .badge-pos.gk { background-color: rgba(55, 0, 60, 0.15); color: #37003c; border: 1px solid #37003c; }
-
-    .th-sortable {
-      cursor: pointer;
-      user-select: none;
-      transition: background-color 0.15s ease;
-    }
-    .th-sortable:hover {
-      background-color: #520059;
-      color: #00ff85;
-    }
-    .row-pitch-active {
-      background-color: #f0fff7 !important;
-      border-left: 4px solid #00ff85 !important;
-    }
-
-    .tactical-pitch {
-      background: radial-gradient(circle at 60% 50%, rgba(0, 255, 133, 0.08) 0%, transparent 60%),
-                  repeating-linear-gradient(90deg, #18011c 0px, #18011c 34px, #1e0223 34px, #1e0223 68px);
-    }
-  </style>
+  <!-- PAGE_METADATA -->
+  <link rel="stylesheet" href="/static/css/site.css">
 </head>
 
 <body class="bg-surface-container-low text-on-surface antialiased overflow-x-hidden selection:bg-[#00ff85] selection:text-[#37003c]">
+  <!-- SITE_HEADER -->
 
-  <!-- Top Broadcast Slim Ticker (28px height, #240028) -->
-  <div class="w-full h-[28px] bg-[#240028] border-b border-[#37003c] overflow-hidden flex items-center text-[11px] font-mono uppercase text-[#d1d1d6] select-none z-40 fixed top-0 left-0 right-0">
-    <div class="flex items-center px-3 bg-[#ff2882] text-white font-bold h-full z-10 shrink-0 tracking-wider">
-      <span class="w-2 h-2 bg-white inline-block mr-1.5 animate-pulse"></span> PLAYER TELEMETRY
-    </div>
-    <div class="overflow-hidden w-full relative flex items-center">
-      <div class="ticker-track whitespace-nowrap" id="tickerTrack">
-        <!-- Injected via app.js -->
-      </div>
-    </div>
-    <div class="bg-[#1a001d] px-3 font-mono text-[10px] text-[#00ff85] h-full flex items-center border-l border-[#37003c] shrink-0">
-      LATENCY: 14MS
-    </div>
-  </div>
-
-  <!-- Full-Width Main Broadcast Header (Height ~64px) -->
-  <header class="fixed top-[28px] left-0 right-0 z-40 bg-[#37003c] text-white border-b-2 border-[#240028]">
-    <div class="h-16 w-full px-4 sm:px-8 flex items-center justify-between">
-      <div class="flex items-center h-full gap-6">
-        <div class="flex items-center gap-3 h-full border-r border-[#240028] pr-6">
-          <div class="w-9 h-9 bg-white flex items-center justify-center border-2 border-[#00ff85]">
-            <svg class="w-6 h-6 fill-[#37003c]" viewBox="0 0 24 24">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"></path>
-            </svg>
-          </div>
-          <div>
-            <div class="font-display font-extrabold text-sm sm:text-base uppercase tracking-tight text-white flex items-center gap-1.5">
-              PREMIER LEAGUE <span class="text-[#00ff85] font-mono text-xs">// HUB</span>
-            </div>
-            <div class="font-mono text-[10px] text-[#00ff85] tracking-widest uppercase">
-              PLAYER LAB 2025 & 2026
-            </div>
-          </div>
-        </div>
-
-        <nav aria-label="Main Broadcast Navigation" class="hidden lg:flex items-center h-full gap-1 font-display font-bold text-xs uppercase tracking-wider">
-          <a class="h-full flex items-center px-3.5 text-[#d1d1d6] hover:text-white hover:bg-[#240028]/40 border-b-4 border-transparent transition-colors" href="/">
-            MATCH ARCHIVE 21–26
-          </a>
-          <a class="h-full flex items-center px-3.5 text-[#00ff85] border-b-4 border-[#00ff85] bg-[#240028]/60" href="/players" aria-current="page">
-            PLAYER LAB 25/26
-          </a>
-          <a class="h-full flex items-center px-3.5 text-[#d1d1d6] hover:text-white hover:bg-[#240028]/40 border-b-4 border-transparent transition-colors" href="/simulator">
-            TACTICAL 11
-          </a>
-          <a class="h-full flex items-center px-3.5 text-[#d1d1d6] hover:text-white hover:bg-[#240028]/40 border-b-4 border-transparent transition-colors" href="#playerCompareSection">
-            HEAD-TO-HEAD
-          </a>
-        </nav>
-      </div>
-
-      <div class="flex items-center gap-3">
-        <div class="hidden sm:flex items-center bg-[#240028] border border-[#37003c] px-3 py-1.5">
-          <span class="font-mono text-[10px] text-[#d1d1d6] uppercase mr-2">SEASON:</span>
-          <span class="font-mono text-xs text-[#00ff85] font-bold" id="playerSeasonHeaderPill">2024/25 CAMPAIGN</span>
-        </div>
-
-        <div class="flex items-center bg-[#240028] px-2.5 py-1.5 border border-[#00ff85]/30">
-          <span class="w-2 h-2 bg-[#00ff85] inline-block mr-1.5 animate-pulse"></span>
-          <span class="font-mono text-[10px] text-[#00ff85] font-bold tracking-wider">LIVE FEED ON</span>
-        </div>
-
-        <div class="border border-[#00ff85] p-0.5 bg-[#240028]">
-          <img alt="Premier League Logo" class="w-8 h-8 object-cover" src="https://lh3.googleusercontent.com/aida/ALJJyrB0PIZ7q9s6Zdxl4DHNpcQVBXBUg-l9-SCMZ0HjUbHu7AvJVHgIPtw7E6lU2oBpl08xNPPt405Iiex4GNp1cb_9aBOvyZpga22KEbneREkjQL0UYdes7gHM-kFQaEXOyNujC3w3pUXNAP5hQB9twuMzWpre2zjYUUq75KJbEM9RXBwrrEtYCwVyPEzQTxsoF01X7P3TdKR1Eux-j7Y5hXS02NTb0cmRFWXbqdjFR8nTpg"/>
-        </div>
-      </div>
-    </div>
-  </header>
-
-  <!-- Main Content Container -->
-  <main class="w-full pt-[96px] pb-16 min-h-screen" id="players-hub-view">
+  <main class="w-full pb-16 min-h-screen" id="players-hub-view">
     <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 pt-6 flex flex-col gap-6">
+      <section class="site-intro">
+        <h1>Premier League Player Stats</h1>
+        <p>Compare 2024/25 player records and 2025/26 projections by club, position, and season. <a href="/methodology">About the data</a></p>
+      </section>
+      <p id="dataset-status" role="status" hidden></p>
+      <noscript><p>Enable JavaScript for interactive filters and comparisons. You can browse the <a href="/standings">season standings</a> and <a href="/trends">season trends</a> without JavaScript.</p></noscript>
+
 
       <!-- TOP TELEMETRY STRIP (4 Sharp Cards) -->
       <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 w-full">
         <div class="bg-white border border-[#d2c2cd] border-t-4 border-t-[#00ff85] p-4 flex flex-col justify-between shadow-sm relative overflow-hidden">
           <div class="flex items-center justify-between pb-2 border-b border-[#efedf5]">
             <span class="font-display font-bold text-xs uppercase tracking-wider text-[#4f434d]">TRACKED SQUAD ROSTER</span>
-            <span class="material-symbols-outlined text-[#37003c] text-[18px]">group</span>
+            <span class="site-icon text-[#37003c] text-[18px]" aria-hidden="true">♟</span>
           </div>
           <div class="my-3 flex items-baseline justify-between">
-            <span class="font-mono text-3xl sm:text-4xl text-[#37003c] font-black tracking-tight" id="kpiTotalPlayers">994</span>
+            <span class="font-mono text-3xl sm:text-4xl text-[#37003c] font-black tracking-tight" id="kpiTotalPlayers">562</span>
             <span class="font-mono text-[11px] font-bold text-[#37003c] bg-[#00ff85] px-2 py-0.5 uppercase tracking-wide">
               25 & 26 LAB
             </span>
@@ -221,16 +42,16 @@
         <div class="bg-white border border-[#d2c2cd] border-t-4 border-t-[#ff2882] p-4 flex flex-col justify-between shadow-sm relative overflow-hidden">
           <div class="flex items-center justify-between pb-2 border-b border-[#efedf5]">
             <span class="font-display font-bold text-xs uppercase tracking-wider text-[#4f434d]">FORWARD CONVERSION RATE</span>
-            <span class="material-symbols-outlined text-[#ff2882] text-[18px]">adjust</span>
+            <span class="site-icon text-[#ff2882] text-[18px]" aria-hidden="true">◎</span>
           </div>
           <div class="my-3 flex items-baseline justify-between">
-            <span class="font-mono text-3xl sm:text-4xl text-[#37003c] font-black tracking-tight">18.4%</span>
+            <span class="font-mono text-3xl sm:text-4xl text-[#37003c] font-black tracking-tight" id="forward-conversion">—</span>
             <span class="font-mono text-[11px] font-bold text-[#ff2882] bg-[#ffdad6] px-2 py-0.5 uppercase">
-              TOP 10%: 27.2%
+              GOALS / SHOTS
             </span>
           </div>
           <div class="pt-2 border-t border-[#efedf5] flex items-center justify-between text-[11px] font-mono text-[#4f434d]">
-            <span>AVG SHOTS/90: 2.7</span>
+            <span id="forward-shots">SHOTS / 90: —</span>
             <span class="font-bold text-[#37003c]">QUALIFIED 300+ MIN</span>
           </div>
         </div>
@@ -238,16 +59,16 @@
         <div class="bg-white border border-[#d2c2cd] border-t-4 border-t-[#00ff85] p-4 flex flex-col justify-between shadow-sm relative overflow-hidden">
           <div class="flex items-center justify-between pb-2 border-b border-[#efedf5]">
             <span class="font-display font-bold text-xs uppercase tracking-wider text-[#4f434d]">ACTIVE GOLDEN BOOT</span>
-            <span class="material-symbols-outlined text-[#37003c] text-[18px]">military_tech</span>
+            <span class="site-icon text-[#37003c] text-[18px]" aria-hidden="true">★</span>
           </div>
           <div class="my-3">
             <div class="flex items-baseline justify-between">
-              <span class="font-display text-xl sm:text-2xl text-[#37003c] font-black uppercase" id="playerKpiScorerName">M. SALAH</span>
-              <span class="font-mono text-xs text-white bg-[#37003c] px-2 py-0.5 font-bold" id="playerKpiScorerClub">LIV</span>
+              <span class="font-display text-xl sm:text-2xl text-[#37003c] font-black uppercase" id="playerKpiScorerName">—</span>
+              <span class="font-mono text-xs text-white bg-[#37003c] px-2 py-0.5 font-bold" id="playerKpiScorerClub">—</span>
             </div>
             <div class="flex items-baseline gap-2 mt-1 font-mono">
-              <span class="text-base text-[#ff2882] font-black" id="playerKpiScorerGoals">29 GOALS</span>
-              <span class="text-xs text-[#4f434d]" id="playerKpiScorerXg">(27.4 xG)</span>
+              <span class="text-base text-[#ff2882] font-black" id="playerKpiScorerGoals">—</span>
+              <span class="text-xs text-[#4f434d]" id="playerKpiScorerXg">—</span>
             </div>
           </div>
           <div class="pt-2 border-t border-[#efedf5] flex items-center justify-between text-[11px] font-mono text-[#4f434d]">
@@ -259,21 +80,21 @@
         <div class="bg-white border border-[#d2c2cd] border-t-4 border-t-[#ff2882] p-4 flex flex-col justify-between shadow-sm relative overflow-hidden">
           <div class="flex items-center justify-between pb-2 border-b border-[#efedf5]">
             <span class="font-display font-bold text-xs uppercase tracking-wider text-[#4f434d]">ASSIST BENCHMARK</span>
-            <span class="material-symbols-outlined text-[#ff2882] text-[18px]">radar</span>
+            <span class="site-icon text-[#ff2882] text-[18px]" aria-hidden="true">◉</span>
           </div>
           <div class="my-3">
             <div class="flex items-baseline justify-between">
-              <span class="font-display text-xl sm:text-2xl text-[#37003c] font-black uppercase" id="playerKpiAssisterName">B. SAKA</span>
-              <span class="font-mono text-xs text-white bg-[#37003c] px-2 py-0.5 font-bold" id="playerKpiAssisterClub">ARS</span>
+              <span class="font-display text-xl sm:text-2xl text-[#37003c] font-black uppercase" id="playerKpiAssisterName">—</span>
+              <span class="font-mono text-xs text-white bg-[#37003c] px-2 py-0.5 font-bold" id="playerKpiAssisterClub">—</span>
             </div>
             <div class="flex items-baseline gap-2 mt-1 font-mono">
-              <span class="text-base text-[#006e36] font-black" id="playerKpiAssisterValue">10 ASSISTS</span>
-              <span class="text-xs text-[#4f434d]">(10.8 xA)</span>
+              <span class="text-base text-[#006e36] font-black" id="playerKpiAssisterValue">—</span>
+              <span class="text-xs text-[#4f434d]" id="playerKpiAssisterXa">—</span>
             </div>
           </div>
           <div class="pt-2 border-t border-[#efedf5] flex items-center justify-between text-[11px] font-mono text-[#4f434d]">
-            <span>KEY PASSES: 3.2/90</span>
-            <span class="text-[#37003c] font-bold">89.4% ACC</span>
+            <span>EXPECTED ASSISTS</span>
+            <span class="text-[#37003c] font-bold">xA</span>
           </div>
         </div>
       </section>
@@ -338,7 +159,7 @@
               <label class="block font-mono text-[10px] text-[#4f434d] uppercase mb-0.5">SEARCH SQUAD MEMBER</label>
               <div class="relative flex items-center">
                 <input class="w-full bg-white border border-[#d2c2cd] px-2 py-1 font-mono text-xs text-[#37003c] uppercase placeholder:text-[#d2c2cd] focus:outline-none focus:border-[#37003c]" placeholder="HAALAND, SAKA, SALAH..." type="text" id="playerSearchInput"/>
-                <span class="material-symbols-outlined absolute right-1.5 text-[16px] text-[#4f434d] pointer-events-none">search</span>
+                <span class="site-icon absolute right-1.5 text-[16px] text-[#4f434d] pointer-events-none" aria-hidden="true">⌕</span>
               </div>
             </div>
           </div>
@@ -384,7 +205,7 @@
           <div class="bg-[#1a001d] border-2 border-[#37003c] p-4 text-white shadow-sm">
             <div class="flex items-center justify-between pb-3 border-b border-[#37003c]">
               <div class="flex items-center gap-2">
-                <span class="material-symbols-outlined text-[#05f0ff] text-[18px]">sports_and_outdoors</span>
+                <span class="site-icon text-[#05f0ff] text-[18px]" aria-hidden="true">⚽</span>
                 <span class="font-display font-bold text-xs uppercase tracking-wider text-white">
                   TACTICAL PITCH ZONE VISUALIZER
                 </span>
@@ -408,7 +229,7 @@
           <div class="bg-white border border-[#d2c2cd] p-5 shadow-sm" id="playerCompareSection">
             <div class="border-b border-[#efedf5] pb-2 mb-3 flex items-center justify-between">
               <div class="flex items-center gap-1.5">
-                <span class="material-symbols-outlined text-[#37003c] text-[18px]">compare_arrows</span>
+                <span class="site-icon text-[#37003c] text-[18px]" aria-hidden="true">⇄</span>
                 <span class="font-display font-black text-xs uppercase text-[#37003c]">HEAD-TO-HEAD DUEL TELEMETRY</span>
               </div>
               <span class="font-mono text-[10px] bg-[#efedf5] px-1.5 py-0.5 text-[#4f434d] uppercase font-bold">
@@ -451,25 +272,11 @@
   </main>
 
   <!-- Footer -->
-  <footer class="w-full bg-[#37003c] text-[#d1d1d6] border-t-2 border-[#240028]">
-    <div class="max-w-[1600px] mx-auto px-4 sm:px-8 py-5 flex flex-col md:flex-row items-center justify-between gap-4 font-mono text-xs">
-      <div class="flex items-center gap-3">
-        <span class="w-2 h-2 bg-[#00ff85] inline-block"></span>
-        <span class="text-white uppercase font-bold">PREMIER LEAGUE TELEMETRY ARCHIVE // 2021–2026</span>
-        <span class="text-[#4f434d]">|</span>
-        <span class="text-[#00ff85]">BUILD: PROD_v6.4.2</span>
-      </div>
-      <div class="flex items-center gap-6 uppercase text-[11px]">
-        <span>ENGINE: <strong class="text-white">OPTAPRO TACTICAL MATRIX</strong></span>
-        <span>LATENCY: <strong class="text-[#00ff85]">14MS</strong></span>
-        <span>STATUS: <strong class="text-[#00ff85]">BROADCAST SYNCHRONIZED</strong></span>
-      </div>
-    </div>
-  </footer>
+  <footer class="site-header"><div class="site-header-inner"><p class="py-3">Independent Premier League analytics project. <a class="underline" href="/methodology">Data and methodology</a></p></div></footer>
 
   <!-- Scripts -->
-  <script src="../static/js/radash.min.js"></script>
-  <script src="../static/js/charts.js"></script>
-  <script src="../static/js/app.js"></script>
+  <script src="/static/js/radash.min.js" defer></script>
+  <script src="/static/js/charts.js" defer></script>
+  <script src="/static/js/app.js" defer></script>
 </body>
 </html>

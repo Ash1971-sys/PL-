@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- PAGE_METADATA -->
+  <link rel="stylesheet" href="/static/css/site.css">
+  <link rel="stylesheet" href="/static/css/coach-board.css">
+</head>
+<body>
+  <!-- SITE_HEADER -->
+  <main id="main-content" class="coach" tabindex="-1">
+    <header class="coach-heading">
+      <div><h1>Coach Board</h1><p>Build a formation and show your players where to run or pass.</p></div>
+      <button id="coach-present" type="button" aria-pressed="false">Present board</button>
+    </header>
+    <div class="coach-layout">
+      <div class="coach-field">
+        <svg id="coach-pitch" viewBox="0 -82 1000 722" tabindex="0" aria-label="Interactive football pitch and bench" role="group">
+          <title>Football tactics pitch</title>
+          <defs>
+            <marker id="coach-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="3.5" markerHeight="3.5" orient="auto">
+              <path d="M0 0L10 5 0 10Z" fill="#fff"/>
+            </marker>
+          </defs>
+          <g class="coach-lines" aria-hidden="true" fill="none" stroke="#edfdf1" stroke-width="3">
+            <rect x="24" y="24" width="952" height="592"/>
+            <path d="M500 24V616M24 148H174V492H24M976 148H826V492H976M24 241H78V399H24M976 241H922V399H976M24 286H8V354H24M976 286H992V354H976"/>
+            <path d="M174 262A81 81 0 0 1 174 378M826 262A81 81 0 0 0 826 378"/>
+            <circle cx="500" cy="320" r="81"/>
+            <path d="M500 320h.01M126 320h.01M874 320h.01" stroke-linecap="round" stroke-width="8"/>
+          </g>
+          <g id="coach-arrows" aria-hidden="true"></g>
+          <g id="coach-players"></g>
+          <circle id="coach-ball" aria-hidden="true" r="10" fill="white" stroke="#25002c" stroke-width="5"/>
+          <g id="coach-bench" aria-label="Bench players">
+            <rect width="1000" height="82" y="-82" fill="#240d2a"/>
+            <text id="coach-bench-label" x="22" y="-60"></text>
+            <g id="coach-reserves"></g>
+          </g>
+        </svg>
+        <p class="coach-legend"><span class="coach-home">Your team</span><span class="coach-away">Opposition</span><span>Solid arrow · Run</span><span>Dashed arrow · Pass</span></p>
+      </div>
+      <aside class="coach-tools" aria-label="Board tools">
+        <h2>Set up the pitch</h2>
+        <details class="coach-how">
+          <summary>How to use the board</summary>
+          <ol>
+            <li>Pick a setup. Drag a numbered piece from the bench onto the pitch to add it.</li>
+            <li>Drag a player to shape the team. Select a piece to edit their number or send them to the bench.</li>
+            <li>Pick <strong>Draw run</strong> or <strong>Draw pass</strong> and drag an arrow, or tap its start and end.</li>
+            <li>Use <strong>Present board</strong> to show the pitch and arrows to the team.</li>
+          </ol>
+        </details>
+        <div class="coach-row" id="coach-lineups" role="group" aria-label="Opposition setup">
+          <button type="button" data-lineup="one">Your team only</button>
+          <button type="button" data-lineup="keeper">Opposing keeper</button>
+          <button type="button" data-lineup="two">Both teams</button>
+        </div>
+        <label for="coach-side">Bench and formation team</label>
+        <select id="coach-side"><option value="home">Your team</option><option value="away" selected>Opposition</option></select>
+        <label for="coach-shape">Formation preset</label>
+        <select id="coach-shape">
+          <option value="433">4–3–3</option><option value="442">4–4–2</option>
+          <option value="4231">4–2–3–1</option><option value="352">3–5–2</option>
+        </select>
+        <div class="coach-row">
+          <button id="coach-apply" type="button">Apply formation</button>
+          <button id="coach-clear-team" type="button">Clear team</button>
+        </div>
+        <div class="coach-row" id="coach-tools" role="group" aria-label="Pitch tools">
+          <button data-tool="move" type="button" aria-pressed="true">Move</button>
+          <button data-tool="ball" type="button" aria-pressed="false">Place ball</button>
+          <button data-tool="run" type="button" aria-pressed="false">Draw run</button>
+          <button data-tool="pass" type="button" aria-pressed="false">Draw pass</button>
+        </div>
+        <p id="coach-hint" aria-live="polite"></p>
+        <fieldset id="coach-player" hidden>
+          <legend id="coach-selected">Selected player</legend>
+          <label for="coach-number">Shirt number</label>
+          <input id="coach-number" type="number" min="1" max="99" step="1">
+          <label><input id="coach-keeper" type="checkbox"> Goalkeeper</label>
+          <button id="coach-remove" type="button">Remove player</button>
+        </fieldset>
+        <div class="coach-row">
+          <button id="coach-undo" type="button" disabled>Undo</button>
+          <button id="coach-clear-arrows" type="button" disabled>Clear arrows</button>
+        </div>
+        <p id="coach-count" role="status"></p>
+        <p id="coach-rules"></p>
+        <a href="https://www.theifab.com/laws/latest/the-players/">IFAB player rules</a>
+      </aside>
+    </div>
+  </main>
+  <script src="/static/js/coach-board.js" defer></script>
+</body>
+</html>
